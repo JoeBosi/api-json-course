@@ -47,7 +47,8 @@ done
 [[ -n "${p1:-}" && "${p1:-}" == "${p2:-}" && ${#p1} -ge 12 ]] || errore "password non impostata."
 
 # l'hash lo calcola caddy; la password passa solo sullo stdin del comando
-HASH=$(printf '%s' "$p1" | caddy hash-password) || errore "caddy hash-password è fallito."
+# nota: caddy legge una RIGA dallo stdin, quindi il \n ci vuole (senza, risponde "EOF")
+HASH=$(printf '%s\n' "$p1" | caddy hash-password) || errore "caddy hash-password è fallito."
 unset p1 p2
 [[ $HASH == '$2a$'* || $HASH == '$2b$'* ]] || errore "hash inatteso: $HASH"
 
