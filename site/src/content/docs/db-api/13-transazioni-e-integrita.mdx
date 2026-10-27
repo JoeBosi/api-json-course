@@ -1,0 +1,287 @@
+---
+title: "13. Transazioni e integrità"
+description: "Perché un ordine con tre righe nasce tutto o niente: transazioni, vincoli CHECK e chiavi esterne, ON DELETE CASCADE, macchina a stati degli ordini e gli errori 409/422 che li proteggono."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+import Sandbox from '../../../components/Sandbox.astro';
+
+## Obiettivi
+
+- Capire cos'è una **transazione** e perché `POST /orders` scrive due tabelle "tutto o niente".
+- Distinguere i vincoli che il database impone (FK, `CHECK`, `UNIQUE`, `NOT NULL`) da quelli che impone l'applicazione (stock, stati).
+- Riconoscere `409 Conflict` e `422` come risposte "il dato resterebbe incoerente".
+- Vedere in azione `ON DELETE CASCADE` e la **macchina a stati** di un ordine.
+
+Serve la sandbox (tutte le scritture avvengono sulla tua copia):
+
+<Sandbox />
+
+## Teoria
+
+Un ordine è una riga in `orders` **più** una o più righe in `order_items`. Se il server scrivesse la prima e poi fallisse sulla seconda, avresti un ordine vuoto con un totale sbagliato: dati **incoerenti**. Una **transazione** raggruppa le scritture: o vanno a buon fine tutte (`COMMIT`) o nessuna (`ROLLBACK`). È la "A" di **ACID** (Atomicity); le altre tre — Consistency, Isolation, Durability — dicono che le regole restano vere, che le transazioni non si disturbano e che ciò che è confermato non si perde.
+
+Le **regole** che tengono coerente il database si dividono in due famiglie:
+
+| Dove vive la regola | Esempi nel dataset | Se la violi |
+|---|---|---|
+| **Nel database** (schema) | `books.author_id` deve esistere in `authors` (FK); `rating BETWEEN 1 AND 5` (`CHECK`); `customers.email UNIQUE`; `status IN ('pending', …)` | il motore rifiuta la scrittura; l'API lo traduce in `422` o `409` |
+| **Nell'applicazione** (codice del server) | non si ordina un libro con `in_stock = false`; da `pending` si va solo a `paid` o `cancelled`; non si cancella un libro presente in ordini | l'API risponde `409 Conflict` con un codice spiegato |
+
+Le chiavi esterne possono anche decidere **cosa succede quando cancelli la riga puntata**: `order_items.order_id … ON DELETE CASCADE` significa "se sparisce l'ordine, spariscono le sue righe". `books` invece non ha CASCADE verso `order_items`: un libro ordinato non si può cancellare (e l'API lo spiega con `409 book_in_orders`).
+
+<Aside type="tip" title="Status code per l'integrità">
+`422 Unprocessable Content` = la richiesta è ben formata ma un valore non è accettabile (id inesistente, CAP di 2 cifre). `409 Conflict` = la richiesta è valida ma **lo stato attuale** dei dati non la permette (libro esaurito, transizione impossibile, email già usata). Nel capitolo 7 hai visto il formato: qui vedi *quando* compaiono.
+</Aside>
+
+## curl, spiegato opzione per opzione
+
+Prima il token (se non lo hai già dal pannello sopra):
+
+<Curl cmd={`TOKEN=$(curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/sandbox | python3 -c 'import sys, json; print(json.load(sys.stdin)["token"])')
+echo $TOKEN`} spiega={[
+  ['TOKEN=$( … )', 'sostituzione di comando: la shell esegue ciò che sta tra parentesi e mette il suo output nella variabile'],
+  ["python3 -c '…'", 'un programma Python di una riga che legge il JSON da stdin e stampa solo il campo <code>token</code>'],
+]} />
+
+### Un ordine con due righe, in una transazione
+
+<Curl cmd={`curl -s -i -X POST https://corso-api-json.giuseppebosi.com/api/v1/orders \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H 'Content-Type: application/json' \\
+  -d '{ "customer_id": 3,
+        "items": [ { "book_id": 5, "quantity": 2 }, { "book_id": 9, "quantity": 1 } ],
+        "shipping_address": { "street": "Via Garibaldi 12", "city": "Torino", "zip": "10121", "country": "IT" } }'`} spiega={[
+  ['-i', '<em>include</em>: stampa anche la riga di stato e gli header della risposta, non solo il body'],
+  ['-H "Authorization: Bearer $TOKEN"', 'qui servono i doppi apici: la shell deve sostituire <code>$TOKEN</code> con il valore'],
+  ['"items": [ … ]', 'un array di righe: ognuna con la FK <code>book_id</code> e la quantità. Il prezzo lo mette il server, letto da <code>books</code>'],
+  ['"shipping_address": { … }', 'un oggetto salvato come JSON in una colonna: viene validato (CAP di 5 cifre, paese di 2 lettere)'],
+]} />
+
+```http
+HTTP/1.1 201 Created
+location: https://corso-api-json.giuseppebosi.com/api/v1/orders/121
+
+{"id":121,"customer_id":3,"status":"pending","shipping_address":{"street":"Via Garibaldi 12","city":"Torino","zip":"10121","country":"IT"},
+ "total":68.98,"created_at":"2026-09-18T20:05:50Z",
+ "items":[{"id":306,"order_id":121,"book_id":5,"quantity":2,"unit_price":27.82},{"id":307,"order_id":121,"book_id":9,"quantity":1,"unit_price":13.34}]}
+```
+
+Il server, dentro **una** transazione: controlla il cliente (FK), controlla ogni libro (FK + stock), calcola `total` (2 × 27.82 + 13.34 = 68.98), inserisce la riga in `orders`, inserisce le due righe in `order_items` con il prezzo **del momento** (`unit_price`: se domani il libro cambia prezzo, l'ordine resta com'era), e conferma.
+
+### Tutto o niente: una riga sbagliata annulla l'ordine intero
+
+<Curl cmd={`curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/orders \\
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \\
+  -d '{ "customer_id": 3, "items": [ { "book_id": 5, "quantity": 1 }, { "book_id": 9999, "quantity": 1 } ],
+        "shipping_address": { "street": "Via Garibaldi 12", "city": "Torino", "zip": "10121" } }'
+curl -s "https://corso-api-json.giuseppebosi.com/api/v1/orders?limit=1" -H "Authorization: Bearer $TOKEN"`} spiega={[
+  ['"book_id": 9999', 'una FK che non punta a nulla'],
+  ['seconda curl', "controlla quanti ordini ci sono adesso: <code>meta.total</code>"],
+]} />
+
+```json
+{"error":{"code":"unknown_book","message":"book_id 9999 non esiste"}}
+… "meta": { "page": 1, "limit": 1, "total": 121, … }
+```
+
+`total` è ancora **121**: il libro 5 era valido, ma l'ordine non è stato creato nemmeno in parte. Nessuna riga orfana in `order_items`.
+
+### Una regola dell'applicazione: il libro esaurito
+
+Mettiamo fuori stock il libro 5 e riproviamo:
+
+```bash
+curl -s -X PATCH https://corso-api-json.giuseppebosi.com/api/v1/books/5 \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"in_stock": false}'
+curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/orders \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"customer_id": 3, "items": [{"book_id": 5, "quantity": 1}], "shipping_address": {"street": "Via Garibaldi 12", "city": "Torino", "zip": "10121"}}'
+```
+
+```json
+{"error":{"code":"out_of_stock","message":"'Andromeda e il Novecento' non è disponibile"}}
+```
+
+`409`: la richiesta è corretta, è lo **stato** del libro a impedirla. Nessun vincolo del database lo saprebbe esprimere: è logica applicativa.
+
+### La macchina a stati dell'ordine
+
+Un ordine va `pending → paid → shipped → delivered`, con `cancelled` possibile solo da `pending` o `paid`. Provare a saltare un passo:
+
+```bash
+curl -s -X PATCH https://corso-api-json.giuseppebosi.com/api/v1/orders/121 \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"status": "shipped"}'
+```
+
+```json
+{"error":{"code":"invalid_transition","message":"Da 'pending' non si può passare a 'shipped'","details":{"allowed":["cancelled","paid"]}}}
+```
+
+Con `{"status": "paid"}` il passaggio riesce (`"status": "paid"`); da lì `delivered` è di nuovo rifiutato (`allowed: ["cancelled", "shipped"]`). E un valore fuori dall'insieme (`"bho"`) non arriva neppure alla logica: `422 validation_error`, "Input should be 'pending', 'paid', 'shipped', 'delivered' or 'cancelled'" — è il `CHECK` dello schema, replicato nel modello di validazione.
+
+### Chiavi esterne: cosa protegge, cosa cancella a cascata
+
+```bash
+curl -s -X DELETE https://corso-api-json.giuseppebosi.com/api/v1/books/1 -H "Authorization: Bearer $TOKEN"
+```
+
+```json
+{"error":{"code":"book_in_orders","message":"Il libro compare in ordini esistenti: la chiave esterna impedisce di cancellarlo"}}
+```
+
+Cancellare il libro lascerebbe righe di `order_items` con un `book_id` che non punta a nulla. Al contrario, cancellare l'ordine 121 **porta via** le sue righe, perché la FK è dichiarata `ON DELETE CASCADE`. Verifica con `/sql` prima e dopo:
+
+<Curl cmd={`Q='{"sql": "SELECT COUNT(*) AS righe FROM order_items WHERE order_id = 121"}'
+curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/sql -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$Q"
+curl -s -o /dev/null -w '%{http_code}\\n' -X DELETE https://corso-api-json.giuseppebosi.com/api/v1/orders/121 -H "Authorization: Bearer $TOKEN"
+curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/sql -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$Q"`} spiega={[
+  ["Q='…'", 'salva il body in una variabile per non ripeterlo'],
+  ['-H "Authorization: Bearer $TOKEN" su /sql', 'con il token, <code>/sql</code> legge la <strong>tua</strong> sandbox (dove esiste l&#39;ordine 121)'],
+  ['-o /dev/null', 'butta via il body della risposta (una DELETE riuscita risponde 204 senza corpo)'],
+  ["-w '%{http_code}\\n'", '<em>write-out</em>: stampa solo lo status code seguito da un a capo'],
+]} />
+
+```text
+{"columns":["righe"],"rows":[[2]],"row_count":1,…}
+204
+{"columns":["righe"],"rows":[[0]],"row_count":1,…}
+```
+
+Due righe, poi `204 No Content`, poi zero righe: la cascata ha fatto il suo lavoro. Puoi leggere queste regole in `GET /api/v1/schema`: per `order_items` trovi `foreign_keys: [{column: "book_id", references: books.id}, {column: "order_id", references: orders.id}]` e per le colonne `quantity`, `unit_price` il flag `nullable: false`.
+
+## Python e TypeScript
+
+Uno script che esercita tutta la sequenza gestendo ogni tipo di rifiuto:
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx   →   python3 ordini.py
+import httpx
+
+BASE = "https://corso-api-json.giuseppebosi.com/api/v1"
+token = httpx.post(f"{BASE}/sandbox").json()["token"]
+api = httpx.Client(base_url=BASE, headers={"Authorization": f"Bearer {token}"}, timeout=10)
+INDIRIZZO = {"street": "Via Garibaldi 12", "city": "Torino", "zip": "10121"}
+
+
+def ordina(customer_id: int, righe: list[tuple[int, int]]) -> dict | None:
+    r = api.post("/orders", json={"customer_id": customer_id, "shipping_address": INDIRIZZO,
+                                  "items": [{"book_id": b, "quantity": q} for b, q in righe]})
+    if r.status_code == 201:
+        return r.json()
+    err = r.json()["error"]
+    print(f"ordine rifiutato ({r.status_code} {err['code']}): {err['message']}")
+    return None
+
+
+ordine = ordina(3, [(5, 2), (9, 1)])
+print("creato:", ordine["id"], ordine["total"])
+ordina(3, [(5, 1), (9999, 1)])          # 422 unknown_book: niente ordine parziale
+
+api.patch("/books/5", json={"in_stock": False})
+ordina(3, [(5, 1)])                     # 409 out_of_stock
+
+for stato in ["shipped", "paid", "delivered", "shipped", "delivered"]:
+    r = api.patch(f"/orders/{ordine['id']}", json={"status": stato})
+    esito = r.json()["status"] if r.status_code == 200 else f"409 {r.json()['error']['details']['allowed']}"
+    print(f"→ {stato:<10} {esito}")
+
+print("DELETE libro 1:", api.delete("/books/1").json()["error"]["code"])   # book_in_orders
+print("DELETE ordine:", api.delete(f"/orders/{ordine['id']}").status_code)  # 204, righe cancellate a cascata
+api.delete("/sandbox")
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types ordini.ts
+const BASE = "https://corso-api-json.giuseppebosi.com/api/v1";
+const { token } = await (await fetch(`${BASE}/sandbox`, { method: "POST" })).json();
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+const INDIRIZZO = { street: "Via Garibaldi 12", city: "Torino", zip: "10121" };
+
+async function ordina(customerId: number, righe: [number, number][]) {
+  const r = await fetch(`${BASE}/orders`, { method: "POST", headers, body: JSON.stringify({
+    customer_id: customerId, shipping_address: INDIRIZZO,
+    items: righe.map(([book_id, quantity]) => ({ book_id, quantity })) }) });
+  if (r.status === 201) return r.json();
+  const { error } = await r.json();
+  console.log(`ordine rifiutato (${r.status} ${error.code}): ${error.message}`);
+  return null;
+}
+
+const ordine = await ordina(3, [[5, 2], [9, 1]]);
+console.log("creato:", ordine.id, ordine.total);
+await ordina(3, [[5, 1], [9999, 1]]);        // 422 unknown_book: niente ordine parziale
+
+await fetch(`${BASE}/books/5`, { method: "PATCH", headers, body: JSON.stringify({ in_stock: false }) });
+await ordina(3, [[5, 1]]);                   // 409 out_of_stock
+
+for (const stato of ["shipped", "paid", "delivered", "shipped", "delivered"]) {
+  const r = await fetch(`${BASE}/orders/${ordine.id}`, { method: "PATCH", headers, body: JSON.stringify({ status: stato }) });
+  const j = await r.json();
+  console.log(`→ ${stato.padEnd(10)} ${r.ok ? j.status : `409 ${JSON.stringify(j.error.details.allowed)}`}`);
+}
+
+console.log("DELETE libro 1:", (await (await fetch(`${BASE}/books/1`, { method: "DELETE", headers })).json()).error.code);
+console.log("DELETE ordine:", (await fetch(`${BASE}/orders/${ordine.id}`, { method: "DELETE", headers })).status);
+await fetch(`${BASE}/sandbox`, { method: "DELETE", headers });
+```
+</TabItem>
+</Tabs>
+
+Output atteso:
+
+```text
+creato: 121 68.98
+ordine rifiutato (422 unknown_book): book_id 9999 non esiste
+ordine rifiutato (409 out_of_stock): 'Andromeda e il Novecento' non è disponibile
+→ shipped    409 ['cancelled', 'paid']
+→ paid       paid
+→ delivered  409 ['cancelled', 'shipped']
+→ shipped    shipped
+→ delivered  delivered
+DELETE libro 1: book_in_orders
+DELETE ordine: 204
+```
+
+## Prova subito
+
+<Prova method="POST" path="/api/v1/orders" sandbox titolo="crea un ordine (transazione)" body={{ customer_id: 3, items: [{ book_id: 5, quantity: 2 }, { book_id: 9, quantity: 1 }], shipping_address: { street: "Via Garibaldi 12", city: "Torino", zip: "10121" } }} />
+
+<Prova method="POST" path="/api/v1/orders" sandbox titolo="una riga sbagliata: niente ordine" body={{ customer_id: 3, items: [{ book_id: 5, quantity: 1 }, { book_id: 9999, quantity: 1 }], shipping_address: { street: "Via Garibaldi 12", city: "Torino", zip: "10121" } }} />
+
+<Prova method="PATCH" path="/api/v1/orders/121" sandbox titolo="salta uno stato → 409" body={{ status: "shipped" }} />
+
+<Prova method="DELETE" path="/api/v1/books/1" sandbox titolo="cancella un libro ordinato → 409" />
+
+<Prova method="POST" path="/api/v1/orders" sandbox titolo="422: items vuoto e CAP corto" body={{ customer_id: 3, items: [], shipping_address: { street: "x", city: "y", zip: "12" } }} />
+
+## Esercizio
+
+1. Crea un cliente con `POST /customers`, poi riprova con la **stessa email**: quale status e quale codice ottieni? Quale vincolo del database c'è dietro?
+2. Porta un ordine a `cancelled` da `pending`, poi prova a pagarlo. Cosa dice `details.allowed`?
+3. Con `/sql` sulla tua sandbox, verifica che dopo `DELETE /orders/{id}` non restino righe in `order_items` con quell'`order_id`.
+4. Perché `unit_price` è copiato in `order_items` invece di leggere `books.price` con un JOIN?
+
+<details>
+<summary>Soluzione</summary>
+
+1. `409 duplicate_email`: il vincolo `UNIQUE` su `customers.email`.
+2. `allowed: []` — `cancelled` è uno stato finale, come `delivered`.
+3. `{"sql": "SELECT COUNT(*) FROM order_items WHERE order_id = ?", "params": [ID]}` → `[[0]]`.
+4. Perché il prezzo pagato è un **fatto storico**: se il listino cambia, l'ordine (e la fattura) devono restare uguali. È una denormalizzazione voluta.
+</details>
+
+## Errori comuni
+
+- **Scrivere due tabelle con due chiamate separate** dal client (prima l'ordine, poi le righe): se la seconda fallisce, resta un ordine vuoto. Il server deve offrire un'operazione atomica, e tu devi usarla.
+- **Interpretare un 409 come "riprova"**: ritentare la stessa richiesta darà lo stesso 409. Va cambiato qualcosa (o informato l'utente).
+- **Fidarsi solo della validazione client**: le regole vere stanno nel database e nel server; il client può solo anticiparle.
+- **Confondere CASCADE con "il server pulisce per me"**: è una scelta dello schema, tabella per tabella. Leggila in `/schema` prima di cancellare.
+
+## In sintesi
+
+Transazioni e vincoli sono ciò che rende un database più di un mucchio di file: `POST /orders` è atomico, le FK impediscono orfani o cancellano a cascata, i `CHECK` e la macchina a stati tengono i valori sensati, e l'API traduce tutto in `422`/`409` leggibili. Nel prossimo capitolo l'attenzione passa dalla correttezza alla velocità: cache, ETag, compressione e rate limit.

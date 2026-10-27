@@ -1,0 +1,154 @@
+---
+title: "12. Performance"
+description: "Misurare invece di credere: json vs orjson in Python, JSON.parse in Node, cosa costa davvero, compressione HTTP e le tre regole che contano più di qualsiasi libreria."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+
+## Obiettivi
+
+- Misurare il costo di parsing e serializzazione con un benchmark riproducibile.
+- Sapere quando `orjson` (Python) vale la dipendenza in più, e quando no.
+- Ridurre i byte sul filo con la compressione HTTP (`Accept-Encoding`).
+- Riconoscere gli sprechi tipici: parse/stringify ripetuti, copie inutili, `indent` in produzione.
+
+## Teoria
+
+Il parsing JSON è **CPU-bound** e proporzionale ai byte. Ordini di grandezza indicativi su una macchina moderna: il modulo `json` di Python fa circa 50–100 MB/s, `orjson` 5–10 volte tanto; `JSON.parse` di V8 (Node) è nell'ordine di 100–300 MB/s. Per capire se *a te* serve ottimizzare, misura sul tuo carico: un benchmark di 10 righe vale più di qualunque tabella.
+
+Tre regole che pesano più della libreria:
+
+1. **Non parsare due volte.** `JSON.parse(JSON.stringify(x))` come "deep clone" o convertire stringa → oggetto → stringa in ogni passaggio di una pipeline è lo spreco più comune. In JS usa `structuredClone(x)`.
+2. **Meno byte = più veloce ovunque**: rete, parsing, memoria. Chiedi solo i campi che servono (paginazione, `select` nelle query strutturate), e attiva la **compressione HTTP**: un JSON ripetitivo si comprime 5–10 volte.
+3. **Niente `indent` in produzione.** L'indentazione serve agli umani; tra macchine aumenta i byte del 20–40 % senza nessun vantaggio.
+
+### orjson in due parole
+
+`orjson` è una libreria in Rust: `orjson.loads(bytes|str) -> obj`, `orjson.dumps(obj) -> bytes` (attenzione: **bytes**, non str). Serializza nativamente `datetime`, `dataclass`, `numpy`, `UUID`; l'opzione `OPT_INDENT_2` indenta, `OPT_SORT_KEYS` ordina le chiavi. Non supporta `object_hook`, `default` è supportato. FastAPI la usa automaticamente con `ORJSONResponse`.
+
+## curl, spiegato
+
+Misuriamo i byte con e senza compressione contro il server pubblico (dietro Caddy, che comprime).
+
+<Curl cmd={`curl -s -o /dev/null -w '%{size_download} byte, %{time_total}s\\n' \\
+  https://corso-api-json.giuseppebosi.com/api/v1/export/books.ndjson
+
+curl -s -o /dev/null -w '%{size_download} byte, %{time_total}s\\n' \\
+  -H 'Accept-Encoding: gzip' --compressed \\
+  https://corso-api-json.giuseppebosi.com/api/v1/export/books.ndjson
+
+curl -sI -H 'Accept-Encoding: gzip' https://corso-api-json.giuseppebosi.com/api/v1/books/1 | grep -i content-encoding`} spiega={[
+  ['-o /dev/null', "butta via il corpo: qui interessano solo le misure"],
+  ["-w '…'", "<em>write-out</em>: stampa un formato con variabili di curl dopo la richiesta"],
+  ['%{size_download}', "byte effettivamente scaricati (compressi, se compressi)"],
+  ['%{time_total}', "tempo totale della richiesta in secondi"],
+  ["-H 'Accept-Encoding: gzip'", "header che dice al server: &quot;accetto una risposta compressa gzip&quot; (anche <code>br</code>, <code>zstd</code>)"],
+  ['--compressed', "fa decomprimere a curl il corpo ricevuto; senza, curl salverebbe i byte gzip così come sono"],
+  ['-I', "<em>head</em>: chiede solo gli header (metodo HEAD)"],
+  ['grep -i content-encoding', "mostra solo l'header che dice come è compressa la risposta"],
+]} />
+
+Sul server pubblico l'export passa da ~34 KB a ~6 KB. La compressione la fanno in tandem FastAPI (`GZipMiddleware`, anche sulle risposte in streaming) e il reverse proxy Caddy (che aggiunge `zstd` e comprime le pagine del sito): la vedi anche in locale con `uv run fastapi dev`.
+
+## Python e TypeScript
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx orjson
+import json, timeit, httpx, orjson
+
+testo = httpx.get("https://corso-api-json.giuseppebosi.com/api/v1/export/books.ndjson").text
+righe = [r for r in testo.splitlines() if r]
+grande = "[" + ",".join(righe) + "]"      # un array JSON da ~34 KB
+dati = json.loads(grande)
+N = 200
+ms = lambda f: timeit.timeit(f, number=N) / N * 1000
+
+print("byte:", len(grande))
+print("json.loads   %.2f ms" % ms(lambda: json.loads(grande)))
+print("orjson.loads %.2f ms" % ms(lambda: orjson.loads(grande)))
+print("json.dumps   %.2f ms" % ms(lambda: json.dumps(dati)))
+print("orjson.dumps %.2f ms" % ms(lambda: orjson.dumps(dati)))
+print(type(orjson.dumps(dati)))           # <class 'bytes'>  ← attenzione
+print(orjson.dumps({"x": 1.5}, option=orjson.OPT_INDENT_2))
+```
+Output sulla macchina del corso (VPS modesto):
+```
+byte: 33885
+json.loads   0.5 ms
+orjson.loads 0.2 ms
+json.dumps   0.6 ms
+orjson.dumps 0.1 ms
+<class 'bytes'>
+b'{\n  "x": 1.5\n}'
+```
+Su 34 KB la differenza è mezzo millisecondo: irrilevante. Su 340 MB diventa secondi. Regola pratica: `orjson` quando serializzi/parsi **molti MB al secondo** (API ad alto traffico, pipeline di dati); altrimenti `json` va benissimo e non aggiunge dipendenze compilate.
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types bench.ts
+const r = await fetch("https://corso-api-json.giuseppebosi.com/api/v1/export/books.ndjson");
+const righe = (await r.text()).split("\n").filter(Boolean);
+const grande = "[" + righe.join(",") + "]";
+const N = 200;
+
+let t = performance.now();
+for (let i = 0; i < N; i++) JSON.parse(grande);
+console.log(`JSON.parse     ${((performance.now() - t) / N).toFixed(2)} ms su ${grande.length} byte`);
+
+const dati = JSON.parse(grande);
+t = performance.now();
+for (let i = 0; i < N; i++) JSON.stringify(dati);
+console.log(`JSON.stringify ${((performance.now() - t) / N).toFixed(2)} ms`);
+
+// deep clone: structuredClone batte parse(stringify(x)) ed è corretto con Date, Map, Set
+t = performance.now();
+for (let i = 0; i < N; i++) structuredClone(dati);
+console.log(`structuredClone ${((performance.now() - t) / N).toFixed(2)} ms`);
+```
+Output sulla macchina del corso:
+```
+JSON.parse     0.32 ms su 33885 byte
+JSON.stringify 0.16 ms
+structuredClone 0.6 ms
+```
+In JavaScript non c'è un "orjson": `JSON.parse` è già nativo e ottimizzato. Le vittorie vengono dalle regole 1–3 e, per file enormi, dallo streaming del capitolo 11. Un trucco reale di V8: per oggetti di configurazione grandi (>10 KB) inclusi in un bundle, `JSON.parse('...')` è più veloce di un literal oggetto, perché il parser JSON è più semplice di quello JS.
+</TabItem>
+</Tabs>
+
+<Aside type="caution" title="Misura la cosa giusta">
+`timeit`/`performance.now()` misurano CPU e memoria della tua macchina. Il tempo che l'utente aspetta è quasi sempre **rete** + **query sul database**: prima di ottimizzare il parsing, guarda `%{time_total}` di curl e i tempi del server (nel nostro caso `elapsed_ms` in `/api/v1/sql`).
+</Aside>
+
+## Prova subito
+
+Confronta i byte: pagina completa contro proiezione dei soli campi che servono.
+
+<Prova path="/api/v1/books?limit=50" titolo="50 libri completi" />
+
+<Prova method="POST" path="/api/v1/query" body={{ "from": "books", "select": ["id", "title", "price"], "limit": 50 }} titolo="gli stessi 50 libri, solo tre campi" />
+
+## Esercizio
+
+1. Ripeti il benchmark Python con `grande` moltiplicato per 100 (`"[" + ",".join(righe * 100) + "]"`, ~3.4 MB). Di quanto cambia il rapporto `json`/`orjson`?
+2. Con curl, misura `%{size_download}` di `/api/v1/books?limit=100` con e senza `--compressed` sul server pubblico. Qual è il rapporto di compressione?
+
+<details>
+<summary>Cosa aspettarsi</summary>
+
+1. Il rapporto resta simile (3–5×) ma i valori assoluti passano a decine di millisecondi: è lì che `orjson` inizia a contare.
+2. Circa 5–7×: JSON con chiavi ripetute ("title", "price"…) si comprime molto bene. È il motivo per cui la compressione va sempre attiva su un'API.
+</details>
+
+## Errori comuni
+
+- **`orjson.dumps()` restituisce `bytes`**: `f.write(orjson.dumps(x))` su un file aperto in modalità testo fallisce; apri in `"wb"` o fai `.decode()`.
+- **Benchmark su una sola esecuzione**: la prima chiamata paga cache e JIT; ripeti N volte e fai la media (o usa `timeit`).
+- **Ottimizzare il parsing quando il collo di bottiglia è la rete** (vedi l'avviso sopra).
+- **`indent=2` lasciato nel codice di produzione**: byte in più a ogni risposta.
+
+## In sintesi
+
+Misura, comprimi, non parsare due volte. `orjson` è un'ottima leva quando i MB al secondo sono tanti; prima di allora il `json` di serie basta. Nel prossimo capitolo JSON entra nel database: colonne JSON, funzioni SQL e indici.

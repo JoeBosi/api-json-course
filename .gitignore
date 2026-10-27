@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+site/node_modules/
+site/dist/
+site/.astro/
+api/.venv/
+api/data/seed.db*
+api/data/sandboxes/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+esempi/**/node_modules/
+audio/voci/
+site/public/audio/

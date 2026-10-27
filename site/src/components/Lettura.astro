@@ -1,0 +1,273 @@
+---
+/**
+ * Lettura audio del capitolo. Di default è solo un pulsantino "🔊 Ascolta": non parte mai da sola.
+ * Aperto mostra: ▶/⏸ (pausa vera, riprende da dove era), ⏹ stop, ⏮ ⏭, scelta della voce
+ * (voce del server generata in build, oppure una delle voci del browser), "Prova voce",
+ * velocità, "Segui il testo" (evidenzia e scorre), ✕ chiudi, "Non mostrare più".
+ * Le preferenze restano nel browser (localStorage). Voci del browser: ricevono il testo con le
+ * parole inglesi scritte in inglese (campo `t` del manifest); la voce del server usa gli MP3.
+ */
+const { slug } = Astro.props as { slug: string };
+---
+<lettura-audio class="lettura not-content" data-slug={slug} hidden>
+  <button class="lettura__chip" data-apri aria-expanded="false" title="Ascolta questa pagina">🔊 Ascolta</button>
+  <div class="lettura__barra" data-barra role="region" aria-label="Lettura audio della pagina" hidden>
+    <div class="lettura__riga">
+      <button class="lettura__play" data-play>▶ Ascolta</button>
+      <button data-stop title="Ferma e torna all'inizio" aria-label="Ferma">⏹</button>
+      <button data-prev title="Paragrafo precedente" aria-label="Paragrafo precedente">⏮</button>
+      <button data-next title="Paragrafo successivo" aria-label="Paragrafo successivo">⏭</button>
+      <span class="lettura__stato" data-stato></span>
+      <button class="lettura__chiudi" data-chiudi title="Chiudi (ferma la lettura)" aria-label="Chiudi">✕</button>
+    </div>
+    <div class="lettura__riga">
+      <label>Voce <select data-voce></select></label>
+      <button data-prova title="Ascolta una frase di prova con termini inglesi">🔈 Prova voce</button>
+      <label>Velocità <select data-vel>
+        <option value="0.9">0.9×</option><option value="1">1×</option><option value="1.15">1.15×</option>
+        <option value="1.3">1.3×</option><option value="1.5">1.5×</option>
+      </select></label>
+      <label class="lettura__check"><input type="checkbox" data-segui /> Segui il testo</label>
+    </div>
+    <p class="lettura__widget" data-widget hidden>
+      Lettura in pausa: prova il widget qui sotto con <b>▶ Esegui</b>, poi
+      <button class="primario" data-riprendi>▶ Riprendi</button>
+    </p>
+    <p class="lettura__nota" data-nota></p>
+    <p class="lettura__sintetica">Voce sintetica, generata automaticamente: non è una persona che legge. <a href="/privacy/">Come funziona</a>.</p>
+    <button class="lettura__link" data-disattiva>Non mostrare più la lettura audio (si riattiva da «Presentazione»)</button>
+  </div>
+</lettura-audio>
+
+<script>
+  const CHIAVE = 'corso-api-json.lettura';
+  const CLOUD = 'cloud';       // voce del corso (generata in build, MP3 nel sito)
+  const FRASE_PROVA = "Con curl facciamo una richiesta GET all'endpoint slash api slash v1 slash books, e il server risponde con un JSON. Poi lo leggiamo in Python con httpx, oppure in TypeScript con fetch.";
+  type Par = { id: string; tipo: string; hash: string; n: string; voce: string; t: string; pausa?: boolean; nascosto?: boolean; d?: number | null; hc?: string; dc?: number | null };
+  type Pref = { vel: number; voce: string; segui: boolean; aperto: boolean; disattivo: boolean; pos?: { slug: string; i: number } };
+
+  const norma = (t: string) => t.toLowerCase().replace(/[^a-z0-9àèéìòù]+/g, '').slice(0, 160);
+  const qualita = (v: SpeechSynthesisVoice) => (/natural|neural|online|enhanced|premium|siri|google/i.test(v.name) ? 0 : 1);
+
+  function leggiPref(): Pref {
+    const base: Pref = { vel: 1, voce: '', segui: true, aperto: false, disattivo: false };
+    try { return { ...base, ...JSON.parse(localStorage.getItem(CHIAVE) ?? '{}') }; } catch { return base; }
+  }
+  function scriviPref(p: Pref) { try { localStorage.setItem(CHIAVE, JSON.stringify(p)); } catch {} }
+
+  class LetturaAudio extends HTMLElement {
+    pars: Par[] = [];
+    el: (HTMLElement | null)[] = [];
+    i = 0;
+    stato: 'fermo' | 'play' | 'pausa' | 'widget' = 'fermo';
+    audio = new Audio();
+    gen = 0;                 // invalida i callback di letture annullate
+    mp3InPausa = false;
+    voci: SpeechSynthesisVoice[] = [];
+    cloud: { voce: string; dir: string; nome?: string } | null = null;
+    pref = leggiPref();
+    q<T extends HTMLElement = HTMLElement>(s: string) { return this.querySelector(s) as T; }
+
+    async connectedCallback() {
+      if (this.pref.disattivo) return;              // resta nascosto
+      try {
+        const m = await (await fetch('/audio/manifest.json', { cache: 'force-cache' })).json();
+        this.pars = m.pagine[this.dataset.slug!] ?? [];
+        if (m.cloud && this.pars.some((p: Par) => p.hc)) this.cloud = m.cloud;
+      } catch { this.pars = []; }
+      if (!this.pars.length) return;                // pagina senza testo da leggere
+      this.hidden = false;
+      this.associa();
+      this.caricaVoci();
+      if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = () => this.caricaVoci();
+
+      this.q<HTMLSelectElement>('[data-vel]').value = String(this.pref.vel);
+      this.q<HTMLInputElement>('[data-segui]').checked = this.pref.segui;
+      if (this.pref.pos?.slug === this.dataset.slug) this.i = Math.min(this.pref.pos.i, this.pars.length - 1);
+      this.apri(this.pref.aperto);
+
+      this.q('[data-apri]').onclick = () => this.apri(true);
+      this.q('[data-chiudi]').onclick = () => { this.stop(); this.apri(false); };
+      this.q('[data-play]').onclick = () => (this.stato === 'play' ? this.pausa() : this.play());
+      this.q('[data-stop]').onclick = () => this.stop(true);
+      this.q('[data-prev]').onclick = () => this.salta(-1);
+      this.q('[data-next]').onclick = () => this.salta(+1);
+      this.q('[data-riprendi]').onclick = () => this.dopoWidget();
+      this.q('[data-prova]').onclick = () => this.prova();
+      this.q('[data-disattiva]').onclick = () => { this.stop(); this.pref.disattivo = true; this.apri(false); this.hidden = true; };
+      this.q<HTMLSelectElement>('[data-vel]').onchange = (e) => {
+        this.pref.vel = +(e.target as HTMLSelectElement).value; this.audio.playbackRate = this.pref.vel; this.salva();
+        if (this.stato === 'play' && !this.usaServer()) this.leggi(this.i);   // le voci del browser applicano la velocità alla frase successiva
+      };
+      this.q<HTMLSelectElement>('[data-voce]').onchange = (e) => {
+        this.pref.voce = (e.target as HTMLSelectElement).value; this.salva();
+        if (this.stato === 'play') this.leggi(this.i); else this.mp3InPausa = false;
+      };
+      this.q<HTMLInputElement>('[data-segui]').onchange = (e) => { this.pref.segui = (e.target as HTMLInputElement).checked; this.salva(); };
+      this.audio.onended = () => this.dopo(this.gen);
+      this.audio.onerror = () => this.mp3Mancante();
+      window.addEventListener('corso:prova-eseguita', () => { if (this.stato === 'widget') this.dopoWidget(); });
+      window.addEventListener('pagehide', () => this.stop());
+      this.el.forEach((e, k) => e?.addEventListener('click', () => { if (this.stato === 'play' || this.stato === 'pausa') { this.stato = 'play'; this.leggi(k); } }));
+      this.aggiornaUI();
+    }
+
+    // ---------------------------------------------------------------- stato e UI
+    apri(si: boolean) {
+      this.pref.aperto = si; this.salva();
+      this.q('[data-barra]').hidden = !si; this.q('[data-apri]').hidden = si;
+      this.q('[data-apri]').setAttribute('aria-expanded', String(si));
+    }
+    salva() { this.pref.pos = { slug: this.dataset.slug!, i: this.i }; scriviPref(this.pref); }
+    nota(t: string) { this.q('[data-nota]').textContent = t; }
+    aggiornaUI() {
+      const play = this.q('[data-play]');
+      play.textContent = this.stato === 'play' ? '⏸ Pausa' : this.stato === 'pausa' ? '▶ Riprendi' : this.i > 0 ? `▶ Continua (§ ${this.i + 1})` : '▶ Ascolta';
+      this.q('[data-widget]').hidden = this.stato !== 'widget';
+      const min = Math.max(1, Math.round(this.pars.reduce((s, p) => s + ((this.pref.voce === CLOUD ? p.dc : p.d) ?? p.t.length / 14), 0) / 60));
+      this.q('[data-stato]').textContent = `${this.i + 1}/${this.pars.length} · ~${min} min`;
+    }
+    /** true solo quando si leggono MP3 generati (voce del corso). Piper non è più usato. */
+    usaServer() { return this.pref.voce === CLOUD && !!this.cloud; }
+    mp3(p: Par) { return this.pref.voce === CLOUD && p.hc && this.cloud ? `/audio/${this.cloud.dir}/${p.hc}.mp3` : `/audio/${p.hash}.mp3`; }
+    vocebrowser() { return this.voci.find(v => v.voiceURI === this.pref.voce) ?? null; }
+
+    caricaVoci() {
+      const tutte = 'speechSynthesis' in window ? speechSynthesis.getVoices() : [];
+      this.voci = tutte.filter(v => /^it/i.test(v.lang) || /multilingual/i.test(v.name))
+        .sort((a, b) => qualita(a) - qualita(b) || a.name.localeCompare(b.name));
+      const sel = this.q<HTMLSelectElement>('[data-voce]');
+      sel.innerHTML = '';
+      if (this.cloud) sel.add(new Option(`★ Voce del corso (${this.cloud.nome ?? this.cloud.voce})`, CLOUD));
+      for (const v of this.voci) sel.add(new Option(`${qualita(v) === 0 ? '★ ' : ''}${v.name} (${v.lang})${v.localService ? '' : ' · online'}`, v.voiceURI));
+      const valida = (this.pref.voce === CLOUD && this.cloud) || this.vocebrowser();
+      if (!this.pref.voce || !valida) this.pref.voce = this.cloud ? CLOUD : this.voci[0]?.voiceURI ?? '';
+      if (!this.voci.length && !this.cloud) this.nota('Il tuo browser non ha voci italiane installate: la lettura ad alta voce non è disponibile qui.');
+      sel.value = this.pref.voce;
+      this.nota(this.voci.length
+        ? `${this.voci.length} voci italiane nel tuo browser. Le ★ sono di solito le migliori (in Edge: «Natural», su Mac/iPhone: «Avanzata»/«Premium»).`
+        : 'Il tuo browser non ha voci italiane: resta la voce del server.');
+    }
+
+    /** Associa ogni paragrafo del manifest all'elemento della pagina, per testo normalizzato. */
+    associa() {
+      const radice = document.querySelector('.sl-markdown-content');
+      if (!radice) return;
+      const cand = [...radice.querySelectorAll<HTMLElement>('h2, h3, h4, p, li, tr, summary, .starlight-aside__title, .curl dl')]
+        .filter(e => !e.closest('.prova, .sandbox, .lettura, pre, .expressive-code, nav'));
+      const usati = new Set<HTMLElement>();
+      let cursore = 0;
+      this.el = this.pars.map(p => {
+        for (let k = cursore; k < Math.min(cand.length, cursore + 20); k++) {   // finestra corta: evita salti su testi simili
+          const e = cand[k]; if (usati.has(e)) continue;
+          const t = norma(this.testoProprio(e));
+          if (p.n && t && (t.startsWith(p.n.slice(0, 40)) || p.n.startsWith(t.slice(0, 40)))) { usati.add(e); cursore = k; return e; }
+        }
+        return null;
+      });
+    }
+    testoProprio(e: HTMLElement) { // senza sottoliste e blocchi di codice, che non vengono letti
+      const c = e.cloneNode(true) as HTMLElement;
+      c.querySelectorAll('ul, ol, pre, .expressive-code').forEach(x => x.remove());
+      return c.textContent ?? '';
+    }
+    evidenzia(k: number | null) {
+      document.querySelectorAll('.in-lettura').forEach(e => e.classList.remove('in-lettura'));
+      const e = k === null ? null : this.el[k];
+      if (!e) return;
+      e.classList.add('in-lettura');
+      if (this.pref.segui) e.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+
+    // ---------------------------------------------------------------- comandi
+    play() {
+      if (this.stato === 'pausa' && this.mp3InPausa && this.audio.src) {   // riprende l'MP3 dal punto esatto
+        this.stato = 'play'; this.mp3InPausa = false; this.audio.play(); this.aggiornaUI(); return;
+      }
+      this.stato = 'play'; this.leggi(this.i);
+    }
+    pausa() {
+      this.gen++; this.stato = 'pausa';
+      this.mp3InPausa = this.usaServer() && !this.audio.paused;
+      this.audio.pause(); this.provaAudio.pause(); if ('speechSynthesis' in window) speechSynthesis.cancel();
+      this.aggiornaUI();
+    }
+    stop(daCapo = false) {
+      this.gen++; this.stato = 'fermo'; this.mp3InPausa = false;
+      this.audio.pause(); this.audio.removeAttribute('src'); this.provaAudio.pause();
+      if ('speechSynthesis' in window) speechSynthesis.cancel();
+      this.evidenzia(null);
+      if (daCapo) this.i = 0;
+      this.salva(); this.aggiornaUI();
+    }
+    salta(d: number) {
+      const k = Math.max(0, Math.min(this.pars.length - 1, this.i + d));
+      if (this.stato === 'play') this.leggi(k); else { this.i = k; this.mp3InPausa = false; this.evidenzia(k); this.salva(); this.aggiornaUI(); }
+    }
+    dopoWidget() { this.stato = 'play'; this.leggi(this.i + 1); }
+
+    // ---------------------------------------------------------------- lettura
+    leggi(k: number) {
+      while (k < this.pars.length && this.pars[k].nascosto && !(this.el[k]?.closest('details') as HTMLDetailsElement | null)?.open) k++;
+      if (k >= this.pars.length) { this.stop(true); this.nota('Fine della pagina.'); return; }
+      this.i = Math.max(0, k); this.salva();
+      const g = ++this.gen;
+      this.audio.pause(); if ('speechSynthesis' in window) speechSynthesis.cancel();
+      this.evidenzia(this.i); this.aggiornaUI();
+      const p = this.pars[this.i];
+      if (this.usaServer()) {
+        this.audio.src = this.mp3(p); this.audio.playbackRate = this.pref.vel;
+        this.audio.play().catch(() => this.mp3Mancante());
+        const n = this.pars[this.i + 1]; if (n) new Audio(this.mp3(n)).preload = 'auto';
+      } else {
+        this.parlaBrowser(p.t, g, () => this.dopo(g));
+      }
+    }
+    dopo(g: number) {
+      if (g !== this.gen || this.stato !== 'play') return;
+      if (this.pars[this.i]?.pausa) {       // davanti a un widget Prova: ci si ferma
+        this.stato = 'widget'; this.aggiornaUI();
+        const e = this.el[this.i]; let w: Element | null = e;
+        while (w && !(w.nextElementSibling?.matches?.('prova-api'))) w = w.nextElementSibling ?? null;
+        (w?.nextElementSibling ?? document.querySelector('prova-api'))?.classList.add('in-lettura');
+        return;
+      }
+      this.leggi(this.i + 1);
+    }
+    /** Voce del browser: frase per frase (Chrome tronca le frasi lunghe oltre ~15 s). */
+    parlaBrowser(testo: string, g: number, fine: () => void) {
+      if (!('speechSynthesis' in window)) { this.nota('Questo browser non ha la sintesi vocale.'); return; }
+      const frasi = testo.match(/[^.!?;:]+[.!?;:]*\s*/g) ?? [testo];
+      const v = this.vocebrowser();
+      let n = 0;
+      const prossima = () => {
+        if (g !== this.gen) return;
+        if (n >= frasi.length) { fine(); return; }
+        const u = new SpeechSynthesisUtterance(frasi[n++]);
+        if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'it-IT';
+        u.rate = this.pref.vel;
+        u.onend = prossima; u.onerror = prossima;
+        speechSynthesis.speak(u);
+      };
+      prossima();
+    }
+    /** MP3 assente o non riproducibile: stesso paragrafo con la voce del browser. */
+    mp3Mancante() {
+      if (this.stato !== 'play' || !this.usaServer()) return;
+      this.nota('Audio non disponibile per questo paragrafo: uso la voce del browser.');
+      const g = this.gen;
+      this.parlaBrowser(this.pars[this.i].t, g, () => this.dopo(g));
+    }
+    provaAudio = new Audio();
+    prova() {
+      if (this.stato === 'play') this.pausa();
+      this.provaAudio.pause();
+      if ('speechSynthesis' in window) speechSynthesis.cancel();
+      if (this.usaServer()) {   // un paragrafo vero con termini inglesi, per giudicare la pronuncia
+        const p = this.pars.find(x => /JSON|API|HTTP/.test(x.t) && x.t.length > 80) ?? this.pars[0];
+        this.provaAudio.src = this.mp3(p); this.provaAudio.playbackRate = this.pref.vel; this.provaAudio.play();
+      } else this.parlaBrowser(FRASE_PROVA, ++this.gen, () => {});
+    }
+  }
+  if (!customElements.get('lettura-audio')) customElements.define('lettura-audio', LetturaAudio);
+</script>

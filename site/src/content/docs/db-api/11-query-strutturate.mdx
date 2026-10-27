@@ -1,0 +1,231 @@
+---
+title: "11. Query strutturate"
+description: "POST /query: un filtro scritto in JSON (and/or annidati, operatori, campi JSON) che il server traduce in SQL sicuro. Con meta.sql vedi la traduzione."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+
+## Obiettivi
+
+- Scrivere un filtro complesso come **documento JSON**: condizioni `and`/`or` annidate, operatori di confronto, liste, `LIKE`, `NULL`.
+- Filtrare e selezionare anche **dentro una colonna JSON** (`attributes.format`).
+- Leggere `meta.sql` per capire come il server traduce la richiesta in SQL con parametri.
+- Capire perché l'API accetta solo campi di una **allow-list** e cosa succede altrimenti.
+
+## Teoria
+
+I filtri nella query string (`?min_price=10&category=gialli`) vanno bene per i casi semplici, ma non sanno esprimere "prezzo sotto 12 **oppure** (titolo contiene Trieste **e** anno ≥ 2010)". Per questo molte API — da Elasticsearch a Supabase/PostgREST, dai CRM alle piattaforme e-commerce — accettano nel **body** di una `POST` un piccolo linguaggio di query in JSON.
+
+Quello del server di prova, `POST /api/v1/query`, ha questa forma:
+
+```json
+{
+  "from": "books",                       // tabella: books, authors, customers, orders, reviews
+  "select": ["id", "title", "price"],    // colonne (opzionale: default tutte)
+  "where": { … },                        // una condizione o un gruppo and/or
+  "order_by": ["-price", "title"],       // "-" = discendente
+  "limit": 20, "offset": 0
+}
+```
+
+Una **condizione** è `{"field": "price", "op": "lt", "value": 12}`. Gli operatori:
+
+| `op` | SQL | `value` |
+|---|---|---|
+| `eq`, `ne` | `=`, `!=` | scalare |
+| `lt`, `lte`, `gt`, `gte` | `<`, `<=`, `>`, `>=` | numero, stringa, data ISO |
+| `in` | `IN (?, ?, …)` | lista (1-100 elementi) |
+| `like` | `LIKE` | stringa con `%` (qualsiasi sequenza) e `_` (un carattere) |
+| `is_null` | `IS NULL` / `IS NOT NULL` | `true` / `false` |
+
+Un **gruppo** è `{"and": [ … ]}` oppure `{"or": [ … ]}`, e dentro può contenere condizioni o altri gruppi (fino a 5 livelli). I campi JSON si indicano con il punto: `attributes.format` diventa `json_extract(attributes, '$.format')`.
+
+<Aside type="caution" title="Perché è POST se non modifica nulla?">
+Per convenzione `GET` non ha un body (molti proxy e client lo ignorano) e gli URL hanno limiti di lunghezza. Una query strutturata è un documento: viaggia nel body, quindi `POST`. È una lettura "travestita": non cambia i dati e non serve la sandbox.
+</Aside>
+
+## curl, spiegato opzione per opzione
+
+Libri tascabili sotto i 12 €, dal più caro:
+
+<Curl cmd={`curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/query \\
+  -H 'Content-Type: application/json' \\
+  -d '{
+    "from": "books",
+    "select": ["id", "title", "price", "attributes.format"],
+    "where": { "and": [
+      { "field": "price", "op": "lt", "value": 12 },
+      { "field": "attributes.format", "op": "eq", "value": "tascabile" }
+    ] },
+    "order_by": ["-price"],
+    "limit": 5
+  }'`} spiega={[
+  ['-X POST', 'il metodo HTTP. Senza <code>-X</code> curl userebbe GET (o POST implicito se c&#39;è <code>-d</code>, ma dichiararlo è più chiaro)'],
+  ['\\ a fine riga', 'continuazione di riga nella shell: il comando prosegue sotto. Nessuno spazio dopo la barra'],
+  ["-H 'Content-Type: application/json'", 'un header della richiesta: dice al server che il body è JSON. Senza, FastAPI risponde 422'],
+  ["-d '…'", "il body (<em>data</em>). Tra apici singoli il JSON può contenere doppi apici e andare a capo"],
+  ['"attributes.format"', 'campo JSON: il punto entra dentro la colonna <code>attributes</code>'],
+  ['"order_by": ["-price"]', 'il segno meno davanti al campo = ordine discendente'],
+]} />
+
+```json
+{
+  "items": [
+    { "id": 14, "title": "Le avventure di Orvieto", "price": 10.56, "attributes.format": "tascabile" },
+    { "id": 2, "title": "TypeScript e Ferrara", "price": 9.76, "attributes.format": "tascabile" },
+    { "id": 62, "title": "Pensare Porto Vecchio", "price": 8.85, "attributes.format": "tascabile" },
+    { "id": 47, "title": "Il valore di Aosta", "price": 7.91, "attributes.format": "tascabile" },
+    { "id": 31, "title": "Contro Aosta", "price": 7.25, "attributes.format": "tascabile" }
+  ],
+  "meta": {
+    "sql": "SELECT id, title, price, json_extract(attributes, '$.format') AS \"attributes.format\" FROM books WHERE (price < ? AND json_extract(attributes, '$.format') = ?) ORDER BY price DESC LIMIT 5 OFFSET 0",
+    "params": [12, "tascabile"],
+    "count": 5
+  }
+}
+```
+
+`meta.sql` è la traduzione: il gruppo `and` è diventato `(… AND …)`, i valori **non** sono nel testo SQL ma nella lista `params` e prendono il posto dei `?` al momento dell'esecuzione. È la difesa fondamentale contro la SQL injection (capitolo 15): il valore `"tascabile"` non potrà mai essere interpretato come codice.
+
+### `or` annidato, `in`, `like`
+
+<Curl cmd={`curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/query \\
+  -H 'Content-Type: application/json' \\
+  -d '{ "from": "books", "select": ["id", "title", "language", "published_year"],
+        "where": { "or": [
+          { "field": "language", "op": "in", "value": ["en", "es"] },
+          { "and": [ { "field": "title", "op": "like", "value": "%Trieste%" },
+                     { "field": "published_year", "op": "gte", "value": 2010 } ] }
+        ] },
+        "order_by": ["language", "-published_year"], "limit": 6 }'`} spiega={[
+  ['"op": "in", "value": [...]', 'lista di valori ammessi → <code>language IN (?,?)</code>'],
+  ['"op": "like", "value": "%Trieste%"', '<code>%</code> = qualunque sequenza: titoli che contengono "Trieste"'],
+  ['{ "and": [...] } dentro "or"', "un gruppo dentro l'altro: le parentesi nell'SQL rispettano l'annidamento"],
+]} />
+
+Nel risultato `meta.sql` vale `… WHERE (language IN (?,?) OR (title LIKE ? AND published_year >= ?)) ORDER BY language ASC, published_year DESC LIMIT 6 OFFSET 0` con `params: ["en", "es", "%Trieste%", 2010]`.
+
+### Cosa succede con un campo non ammesso
+
+<Curl cmd={`curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/query \\
+  -H 'Content-Type: application/json' \\
+  -d '{ "from": "books", "where": { "field": "password", "op": "eq", "value": "x" } }'`} />
+
+```json
+{ "error": { "code": "unknown_field", "message": "Campo 'password' non ammesso per books",
+  "details": { "allowed": ["id", "title", "isbn", "author_id", "category_id", "price", "pages",
+               "published_year", "language", "in_stock", "attributes", "created_at"] } } }
+```
+
+Il server **non** costruisce SQL con nomi che arrivano dal client: li confronta con una lista chiusa di colonne (allow-list). Un nome sconosciuto è un errore `400`, non un tentativo. Lo stesso vale per la tabella: `"from": "users"` produce un `422 validation_error` perché il valore non è tra quelli previsti.
+
+## Python e TypeScript
+
+Una funzione che costruisce il documento di query da parametri e restituisce sia le righe sia l'SQL generato:
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx   →   python3 query.py
+import httpx
+
+BASE = "https://corso-api-json.giuseppebosi.com/api/v1"
+
+
+def cerca_libri(max_price: float, formati: list[str], anno_min: int | None = None) -> dict:
+    condizioni = [
+        {"field": "price", "op": "lte", "value": max_price},
+        {"field": "attributes.format", "op": "in", "value": formati},
+    ]
+    if anno_min is not None:
+        condizioni.append({"field": "published_year", "op": "gte", "value": anno_min})
+    query = {
+        "from": "books",
+        "select": ["id", "title", "price", "published_year", "attributes.format"],
+        "where": {"and": condizioni},
+        "order_by": ["-published_year", "price"],
+        "limit": 10,
+    }
+    r = httpx.post(f"{BASE}/query", json=query, timeout=10)   # json= serializza e mette il Content-Type
+    r.raise_for_status()
+    return r.json()
+
+
+risposta = cerca_libri(15, ["tascabile", "brossura"], anno_min=2020)
+print(risposta["meta"]["sql"])
+for libro in risposta["items"]:
+    print(f"{libro['published_year']}  {libro['price']:>6.2f}  {libro['title']}  [{libro['attributes.format']}]")
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types query.ts
+const BASE = "https://corso-api-json.giuseppebosi.com/api/v1";
+
+type Cond = { field: string; op: string; value?: unknown };
+type Gruppo = { and: (Cond | Gruppo)[] } | { or: (Cond | Gruppo)[] };
+
+async function cercaLibri(maxPrice: number, formati: string[], annoMin?: number) {
+  const condizioni: (Cond | Gruppo)[] = [
+    { field: "price", op: "lte", value: maxPrice },
+    { field: "attributes.format", op: "in", value: formati },
+  ];
+  if (annoMin !== undefined) condizioni.push({ field: "published_year", op: "gte", value: annoMin });
+  const query = {
+    from: "books",
+    select: ["id", "title", "price", "published_year", "attributes.format"],
+    where: { and: condizioni },
+    order_by: ["-published_year", "price"],
+    limit: 10,
+  };
+  const r = await fetch(`${BASE}/query`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(query),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+  return r.json();
+}
+
+const risposta = await cercaLibri(15, ["tascabile", "brossura"], 2020);
+console.log(risposta.meta.sql);
+for (const libro of risposta.items) {
+  console.log(`${libro.published_year}  ${libro.price.toFixed(2).padStart(6)}  ${libro.title}  [${libro["attributes.format"]}]`);
+}
+```
+</TabItem>
+</Tabs>
+
+## Prova subito
+
+Modifica il body prima di eseguire: cambia operatori, aggiungi condizioni, prova un campo inesistente.
+
+<Prova method="POST" path="/api/v1/query" titolo="tascabili sotto i 12 €" body={{ from: "books", select: ["id", "title", "price", "attributes.format"], where: { and: [{ field: "price", op: "lt", value: 12 }, { field: "attributes.format", op: "eq", value: "tascabile" }] }, order_by: ["-price"], limit: 5 }} />
+
+<Prova method="POST" path="/api/v1/query" titolo="ordini consegnati sopra i 60 €" body={{ from: "orders", select: ["id", "customer_id", "status", "total", "shipping_address.city"], where: { and: [{ field: "status", op: "eq", value: "delivered" }, { field: "total", op: "gt", value: 60 }] }, order_by: ["-total"], limit: 5 }} />
+
+## Esercizio
+
+1. Trova le recensioni con voto 1 o 2 scritte nel 2025 (`created_at` è una stringa ISO: confronta con `"2025-01-01"` e `"2026-01-01"`).
+2. Trova i libri in **ebook** (`attributes.ebook` = `true`) che **non** sono in magazzino.
+3. Cosa risponde il server se metti sia `and` sia `or` nello stesso gruppo? Prova e leggi il codice di errore.
+
+<details>
+<summary>Soluzione</summary>
+
+1. `{"from":"reviews","where":{"and":[{"field":"rating","op":"in","value":[1,2]},{"field":"created_at","op":"gte","value":"2025-01-01"},{"field":"created_at","op":"lt","value":"2026-01-01"}]},"order_by":["-created_at"]}`
+2. `{"from":"books","select":["id","title","in_stock"],"where":{"and":[{"field":"attributes.ebook","op":"eq","value":true},{"field":"in_stock","op":"eq","value":false}]}}` — nota che `true`/`false` diventano `1`/`0` in `params`, perché SQLite non ha un tipo booleano.
+3. `400 bad_condition` — "Un gruppo ha o 'and' o 'or', non entrambi".
+</details>
+
+## Errori comuni
+
+- **Dimenticare `Content-Type: application/json`**: il server non sa come leggere il body → `422`.
+- **Apici doppi nel body con `-d "…"`**: la shell li interpreta. Usa apici singoli fuori, doppi dentro (o un file: `-d @query.json`).
+- **`like` senza `%`**: `"value": "Trieste"` cerca il titolo *esattamente* uguale a "Trieste".
+- **Aspettarsi che `select` faccia JOIN**: `/query` lavora su una tabella sola. Per unire tabelle: capitolo 12.
+
+## In sintesi
+
+Una query strutturata è un documento JSON che il server traduce in SQL parametrico, controllando tabelle e campi contro una lista chiusa. Ottieni potenza espressiva senza esporre il database. Nel prossimo capitolo il guinzaglio si allunga: scriverai SQL vero, con JOIN su più tabelle, tramite `POST /sql`.

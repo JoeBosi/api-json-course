@@ -1,0 +1,206 @@
+---
+title: "7. TypeScript: tipi e validazione"
+description: "JSON.parse restituisce any: come passare a unknown, dichiarare interface per le risposte dell'API, scrivere type guard, validare con zod (safeParse, z.infer), usare satisfies e un fetchJson generico."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+
+## Obiettivi
+
+- Capire perché `JSON.parse` restituisce `any` e perché è un problema; usare `unknown` al suo posto.
+- Descrivere le risposte dell'API con `interface`/`type`, e restringere `unknown` con **type guard**.
+- Validare a runtime con **zod**: `z.object`, `safeParse`, `z.infer`, lettura degli errori.
+- Scrivere un `fetchJson<T>` generico e riusabile, e usare `satisfies` per i dati costanti.
+
+## Teoria
+
+### Il problema: `any`
+
+`JSON.parse` è dichiarato come `(text: string) => any`. `any` disattiva il controllo dei tipi: puoi scrivere `libro.titolo.toUpperCase()` (campo inesistente: è `title`) e TypeScript non dice nulla; l'errore arriva a runtime. La disciplina minima è assegnare il risultato a **`unknown`**: TypeScript ti obbliga a *dimostrare* la forma del dato prima di usarlo.
+
+### Descrivere la forma: `interface`
+
+```ts
+interface Book {
+  id: number; title: string; isbn: string; author_id: number; category_id: number;
+  price: number; pages: number | null; published_year: number | null; language: string;
+  in_stock: boolean; attributes: Record<string, unknown>; created_at: string;   // ISO, non Date!
+  reviews_count: number; avg_rating: number | null;
+}
+```
+
+Attenzione a **`null` e opzionali**: `pages` può essere `null` (tipo `number | null`), mentre un campo che *può mancare* si scrive `author?: Author` (presente solo con `?expand=author`). Sono cose diverse (capitolo 3).
+
+### Da `unknown` a `Book`: tre strade
+
+1. **Cast** `as Book`: dice a TypeScript "fidati". Zero sicurezza a runtime: se l'API cambia, esplodi dopo.
+2. **Type guard** manuale: una funzione `(x: unknown): x is Book` che controlla i campi. Sicura, ma verbosa e da tenere allineata a mano.
+3. **Schema con validazione** (zod, valibot, ajv…): descrivi la forma una volta, ottieni **sia** il tipo statico (`z.infer`) **sia** il controllo a runtime. È la strada da preferire per i dati che arrivano dall'esterno.
+
+<Aside type="note" title="zod in due righe">
+`const BookSchema = z.object({ id: z.number(), title: z.string(), … })` descrive la forma. `BookSchema.parse(x)` restituisce un `Book` o lancia `ZodError`; `BookSchema.safeParse(x)` restituisce `{ success, data | error }` senza lanciare. `type Book = z.infer<typeof BookSchema>` ricava il tipo dallo schema, così esiste una sola fonte di verità.
+</Aside>
+
+### `satisfies`
+
+Per i dati **scritti nel codice** (fixture, configurazioni) `satisfies Book` verifica che l'oggetto rispetti il tipo **senza** allargarlo a `Book`: mantieni i tipi letterali e l'autocompletamento, e l'errore compare alla scrittura, non a runtime.
+
+## curl, spiegato: la forma che vogliamo tipizzare
+
+<Curl cmd={`curl -s 'https://corso-api-json.giuseppebosi.com/api/v1/books/7?expand=author' | jq 'del(.attributes)'`} spiega={[
+  ['?expand=author', 'include l&#39;oggetto <code>author</code> (segue la chiave esterna <code>author_id</code>): un campo <em>opzionale</em> dal punto di vista del tipo'],
+  ["jq 'del(.attributes)'", 'toglie il campo <code>attributes</code> dall&#39;output per leggere meglio il resto (solo a video, il server non cambia)'],
+]} />
+
+```json
+{
+  "id": 7,
+  "title": "Oltre Trieste",
+  "isbn": "978-88-36071-007-2",
+  "author_id": 12,
+  "category_id": 3,
+  "price": 28.25,
+  "pages": 642,
+  "published_year": 2001,
+  "language": "es",
+  "in_stock": false,
+  "created_at": "2024-11-27T00:00:00Z",
+  "reviews_count": 4,
+  "avg_rating": 3.5,
+  "author": {
+    "id": 12,
+    "name": "Davide Moretti",
+    "country": "IT",
+    "born_year": 1977,
+    "bio": "Davide Moretti è nata/o nel 1977. Scrive dal 2002."
+  }
+}
+```
+
+<Prova path="/api/v1/books/7?expand=author" titolo="libro 7 con l'autore annidato" />
+
+## TypeScript: dal cast allo schema
+
+<Tabs syncKey="lang">
+<TabItem label="TypeScript">
+```ts
+// npm install zod
+// node --experimental-strip-types tipi.ts
+import { z } from "zod";
+
+const BASE = "https://corso-api-json.giuseppebosi.com/api/v1";
+
+// --- 1. unknown, non any --------------------------------------------------------------------
+const grezzo: unknown = JSON.parse(await (await fetch(`${BASE}/books/7?expand=author`)).text());
+// grezzo.title      <- errore di compilazione: 'grezzo' is of type 'unknown'. Bene.
+
+// --- 2. interface + type guard manuale ------------------------------------------------------
+interface Author { id: number; name: string; country: string; born_year: number | null; bio: string | null }
+interface Book {
+  id: number; title: string; price: number; in_stock: boolean; pages: number | null;
+  created_at: string; author?: Author;
+}
+function isBook(x: unknown): x is Book {
+  if (typeof x !== "object" || x === null) return false;
+  const o = x as Record<string, unknown>;
+  return typeof o.id === "number" && typeof o.title === "string" && typeof o.price === "number"
+      && typeof o.in_stock === "boolean" && typeof o.created_at === "string";
+}
+if (isBook(grezzo)) console.log(grezzo.title.toUpperCase(), grezzo.author?.name);   // OLTRE TRIESTE Davide Moretti
+
+// --- 3. zod: schema = tipo + validazione ----------------------------------------------------
+const AuthorSchema = z.object({ id: z.number().int(), name: z.string(), country: z.string().length(2),
+  born_year: z.number().int().nullable(), bio: z.string().nullable() });
+const BookSchema = z.object({
+  id: z.number().int().positive(),
+  title: z.string().min(1),
+  price: z.number().nonnegative(),
+  in_stock: z.boolean(),
+  pages: z.number().int().nullable(),
+  created_at: z.string().datetime(),          // controlla che sia ISO 8601
+  attributes: z.record(z.string(), z.unknown()),
+  author: AuthorSchema.optional(),            // presente solo con ?expand=author
+});
+type BookZ = z.infer<typeof BookSchema>;      // il tipo deriva dallo schema: una sola fonte di verità
+
+const esito = BookSchema.safeParse(grezzo);
+if (esito.success) {
+  const libro: BookZ = esito.data;
+  console.log(libro.price * 2, libro.author?.country);   // 56.5 IT
+} else {
+  console.log(esito.error.issues);
+}
+
+// --- 4. Leggere gli errori di validazione ---------------------------------------------------
+const rotto = BookSchema.safeParse({ id: "7", title: "", price: -1, in_stock: "no", pages: null, created_at: "ieri", attributes: {} });
+if (!rotto.success) for (const i of rotto.error.issues) console.log(i.path.join("."), "→", i.message);
+// id → Invalid input: expected number, received string
+// title → Too small: expected string to have >=1 characters
+// price → Too small: expected number to be >=0
+// in_stock → Invalid input: expected boolean, received string
+// created_at → Invalid ISO datetime
+
+// --- 5. fetchJson<T>: un helper generico con schema -----------------------------------------
+async function fetchJson<T>(url: string, schema: z.ZodType<T>): Promise<T> {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status} per ${url}`);
+  return schema.parse(await r.json());      // lancia ZodError se la forma non torna
+}
+const PaginaLibri = z.object({ items: z.array(BookSchema), meta: z.object({ total: z.number(), pages: z.number() }) });
+const pagina = await fetchJson(`${BASE}/books?limit=3`, PaginaLibri);
+console.log(pagina.meta.total, pagina.items.map(b => b.title));   // 80 [ 'Il silenzio di Ustica', 'TypeScript e Ferrara', 'Il cervello e Matera' ]
+
+// --- 6. satisfies per i dati scritti nel codice ---------------------------------------------
+const fixture = { id: 1, title: "Test", price: 9.9, in_stock: true, pages: null, created_at: "2026-01-01T00:00:00Z" } satisfies Book;
+console.log(fixture.title.length);   // fixture.title è ancora il tipo letterale "Test": satisfies non allarga
+```
+</TabItem>
+<TabItem label="Python">
+Il capitolo 8 fa lo stesso percorso in Python: `TypedDict` ≈ `interface`, `pydantic` ≈ zod. Corrispondenze:
+
+```python
+# unknown                      -> object / Any (ma Python non ti obbliga a restringerlo)
+# interface Book               -> class Book(TypedDict) oppure @dataclass
+# z.object(...).parse(x)       -> Book.model_validate(x)   (pydantic)
+# safeParse                    -> try/except ValidationError
+# z.infer<typeof Schema>       -> la classe pydantic È già il tipo
+```
+</TabItem>
+</Tabs>
+
+## Esercizio
+
+Scrivi lo schema zod per la risposta di `/api/v1/orders/1?expand=items.book,customer`: ordine con `shipping_address` (oggetto con `street`, `city`, `zip` di 5 cifre, `country` di 2 lettere), `items` (array di righe con `book` annidato: `id`, `title`, `price`, `author_name`) e `customer` (con `email` valida). Validalo con `safeParse` e stampa il nome dell'autore della prima riga.
+
+<Prova path="/api/v1/orders/1?expand=items.book,customer" titolo="ordine 1: tre tabelle in una risposta" />
+
+<details>
+<summary>Soluzione</summary>
+
+```ts
+import { z } from "zod";
+const OrderSchema = z.object({
+  id: z.number().int(), status: z.enum(["pending", "paid", "shipped", "delivered", "cancelled"]),
+  total: z.number(), created_at: z.string().datetime(),
+  shipping_address: z.object({ street: z.string(), city: z.string(), zip: z.string().regex(/^\d{5}$/), country: z.string().length(2) }),
+  items: z.array(z.object({ book_id: z.number(), quantity: z.number().int().positive(), unit_price: z.number(),
+    book: z.object({ id: z.number(), title: z.string(), price: z.number(), author_name: z.string() }) })),
+  customer: z.object({ id: z.number(), name: z.string(), email: z.string().email(), city: z.string() }),
+});
+const r = OrderSchema.safeParse(await (await fetch("https://corso-api-json.giuseppebosi.com/api/v1/orders/1?expand=items.book,customer")).json());
+if (r.success) console.log(r.data.items[0].book.author_name);   // Pietro Galli
+else console.log(r.error.issues);
+```
+</details>
+
+## Errori comuni
+
+- `const x = JSON.parse(s) as Book`: compila, ma non controlla nulla. Se l'API cambia lo scopri in produzione.
+- Dichiarare `created_at: Date` nell'interface: dal JSON arriva una **stringa**. O tieni `string`, o trasformi (reviver / `z.coerce.date()`).
+- Confondere `.nullable()` (può essere `null`) con `.optional()` (può mancare).
+- Validare **tutto** ovunque: valida ai confini (risposta HTTP, file, input utente), poi fidati dei tipi.
+
+## In sintesi
+
+`unknown` ai confini, `interface` per descrivere, type guard o — meglio — uno schema zod per validare e ricavare il tipo, `fetchJson<T>` per non ripeterti. Nel prossimo capitolo la stessa disciplina in Python: dataclass, TypedDict e pydantic.

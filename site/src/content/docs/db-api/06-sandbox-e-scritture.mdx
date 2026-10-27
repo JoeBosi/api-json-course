@@ -1,0 +1,256 @@
+---
+title: "6. Sandbox e scritture"
+description: "Ottenere un token sandbox, poi POST, PUT, PATCH e DELETE con curl, Python e TypeScript: 201 e Location, 204, 409 sulle chiavi esterne, reset. Il dataset pubblico non cambia mai."
+---
+import { Tabs, TabItem, Aside, Steps } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+import Sandbox from '../../../components/Sandbox.astro';
+
+## Obiettivi
+
+- Creare una **sandbox** (una copia privata del database) e usarne il token in ogni richiesta di scrittura.
+- Fare `POST` (creare), `PUT` (sostituire), `PATCH` (modificare in parte), `DELETE` (eliminare) e leggere le risposte: `201` + `Location`, `200`, `204`, `409`.
+- Capire la differenza tra PUT e PATCH sul campo.
+- Azzerare o eliminare la sandbox.
+
+## Teoria
+
+### Perché una sandbox
+
+Un server pubblico su cui chiunque può scrivere diventerebbe un caos in un'ora. Questo server usa un compromesso didattico: il dataset pubblico è **in sola lettura**; chi vuole scrivere chiede un **token** con `POST /api/v1/sandbox`, e da quel momento ogni richiesta che porta quel token lavora su una **copia** del database tutta sua. Il token è un segreto: chi lo ha, vede e modifica la tua copia. Scade dopo 6 ore di inattività (ogni richiesta rinnova il timer).
+
+Il token si manda nell'header `Authorization: Bearer <token>` (standard, [RFC 6750](https://www.rfc-editor.org/rfc/rfc6750)) oppure `X-Sandbox-Token: <token>`. Senza token, una scrittura risponde `401` con il codice `sandbox_required`.
+
+### I quattro verbi di scrittura
+
+| Verbo | Sull'URL | Corpo | Risposta tipica | Idempotente |
+|---|---|---|---|---|
+| `POST` | la **collezione** (`/books`) | l'oggetto nuovo | `201 Created` + header `Location` con l'URL del nuovo elemento + l'oggetto creato | no |
+| `PUT` | l'**elemento** (`/books/81`) | l'oggetto **completo** | `200` + l'oggetto | sì |
+| `PATCH` | l'elemento | **solo i campi** da cambiare | `200` + l'oggetto | in pratica sì |
+| `DELETE` | l'elemento | nessuno | `204 No Content` (corpo vuoto) | sì |
+
+`PUT` vs `PATCH` è la distinzione che più spesso sorprende: con `PUT` **i campi che non mandi vengono azzerati** (o messi al default), perché stai sostituendo l'intera rappresentazione. Con `PATCH` restano com'erano.
+
+### Le regole del server (validazione e integrità)
+
+Il server non accetta qualunque cosa: `title` non vuoto, `price ≥ 0`, `author_id` e `category_id` devono **esistere** (chiavi esterne), l'ISBN dev'essere unico. Le violazioni tornano come `422` (dati non validi), `409` (conflitto con lo stato attuale: ISBN duplicato, libro presente in ordini). Capitolo 7 e 13 per i dettagli.
+
+## La tua sandbox
+
+Il pannello qui sotto crea il token e lo salva nel browser: tutti i widget **Prova** con scritture lo useranno da soli. (Il token resta solo sul tuo browser, in `localStorage`.)
+
+<Sandbox />
+
+## curl, spiegato
+
+### 1. Creare la sandbox e salvare il token
+
+<Curl cmd={`curl -sS -i -X POST https://corso-api-json.giuseppebosi.com/api/v1/sandbox`} spiega={[
+  ['-i', 'mostra gli header: vogliamo vedere lo status <code>201</code>'],
+  ['-X POST', 'creare una sandbox è un&#39;azione, quindi POST; nessun corpo richiesto'],
+]} />
+
+```
+HTTP/1.1 201 Created
+content-type: application/json
+cache-control: no-store
+
+{"token":"sb_7cyEmMkco216unjxIBct6XTQ","created_at":"2026-09-18T20:03:39Z","expires_at":"2026-09-19T02:03:39Z","how_to_use":{"header":"Authorization: Bearer sb_7cyEmMkco216unjxIBct6XTQ","alt_header":"X-Sandbox-Token: sb_7cyEmMkco216unjxIBct6XTQ"}}
+```
+
+Nel terminale conviene metterlo in una variabile (capitolo 2, punto 3):
+
+```bash
+TOKEN=$(curl -sS -X POST https://corso-api-json.giuseppebosi.com/api/v1/sandbox | jq -r .token)
+```
+
+### 2. POST: creare un libro
+
+<Curl cmd={`curl -sS -i -X POST https://corso-api-json.giuseppebosi.com/api/v1/books \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H 'Content-Type: application/json' \\
+  -d '{"title": "Il mio primo libro", "author_id": 3, "category_id": 2, "price": 12.5,
+       "pages": 180, "published_year": 2026,
+       "attributes": {"format": "brossura", "ebook": true}, "tags": ["novità", "esordio"]}'`} spiega={[
+  ['-X POST …/books', 'POST sulla <strong>collezione</strong>: "aggiungi un elemento"'],
+  ['-H "Authorization: Bearer $TOKEN"', 'il token della sandbox; doppie virgolette per espandere la variabile'],
+  ["-H 'Content-Type: application/json'", 'il corpo è JSON'],
+  ["-d '{…}'", 'il nuovo libro. <code>author_id</code> e <code>category_id</code> devono esistere (FK); <code>isbn</code> è opzionale: il server ne genera uno; gli a capo dentro gli apici singoli sono ammessi (con <code>-d</code> curl li toglie)'],
+]} />
+
+```
+HTTP/1.1 201 Created
+location: https://corso-api-json.giuseppebosi.com/api/v1/books/81
+content-type: application/json
+
+{"id":81,"title":"Il mio primo libro","isbn":"978-88-sandbox-81","author_id":3,"category_id":2,"price":12.5,"pages":180,"published_year":2026,"language":"it","in_stock":true,"attributes":{"format":"brossura","ebook":true},"created_at":"2026-09-18T20:03:40Z","reviews_count":0,"avg_rating":null,"tags":["esordio","novità"]}
+```
+
+Tre cose: lo status è **201**, non 200; l'header **`Location`** dice dove vive il nuovo elemento (`/books/81`); il corpo è l'oggetto **come lo ha salvato il server**, con i campi che ha aggiunto lui (`id`, `isbn`, `created_at`, `language` al default `it`).
+
+### 3. PATCH: cambiare due campi
+
+<Curl cmd={`curl -sS -X PATCH https://corso-api-json.giuseppebosi.com/api/v1/books/81 \\
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \\
+  -d '{"price": 9.9, "in_stock": false}' | jq '{id, title, price, in_stock, tags}'`} spiega={[
+  ['-X PATCH …/books/81', 'sull&#39;<strong>elemento</strong>, con i soli campi da cambiare'],
+  ['{"price": 9.9, "in_stock": false}', 'tutto il resto (titolo, tag, attributi…) resta com&#39;era'],
+]} />
+
+```json
+{ "id": 81, "title": "Il mio primo libro", "price": 9.9, "in_stock": false, "tags": ["esordio", "novità"] }
+```
+
+### 4. PUT: sostituire tutto
+
+<Curl cmd={`curl -sS -X PUT https://corso-api-json.giuseppebosi.com/api/v1/books/81 \\
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \\
+  -d '{"title": "Il mio primo libro (2a ed.)", "author_id": 3, "category_id": 2, "price": 14}' \\
+  | jq '{id, title, price, pages, in_stock, tags, attributes}'`} spiega={[
+  ['-X PUT', 'sostituisce l&#39;intera rappresentazione: il corpo deve contenere <strong>tutti</strong> i campi obbligatori (<code>title</code>, <code>author_id</code>, <code>category_id</code>, <code>price</code>)'],
+  ['(niente pages, tags, attributes)', 'e i campi omessi tornano al default: guarda la risposta'],
+]} />
+
+```json
+{ "id": 81, "title": "Il mio primo libro (2a ed.)", "price": 14.0, "pages": null, "in_stock": true, "tags": [], "attributes": {} }
+```
+
+`pages` è diventato `null`, `tags` vuoto, `attributes` vuoto, `in_stock` è tornato `true`: era un PUT. Se volevi cambiare solo il titolo, serviva PATCH.
+
+### 5. DELETE: due esiti
+
+<Curl cmd={`curl -sS -i -X DELETE https://corso-api-json.giuseppebosi.com/api/v1/books/1 -H "Authorization: Bearer $TOKEN"
+curl -sS -i -X DELETE https://corso-api-json.giuseppebosi.com/api/v1/books/81 -H "Authorization: Bearer $TOKEN"`} spiega={[
+  ['-X DELETE …/books/1', 'il libro 1 compare in ordini esistenti (<code>order_items.book_id</code>): la chiave esterna lo protegge'],
+  ['-X DELETE …/books/81', 'il libro che abbiamo creato noi: nessun ordine lo cita'],
+]} />
+
+```
+HTTP/1.1 409 Conflict
+{"error":{"code":"book_in_orders","message":"Il libro compare in ordini esistenti: la chiave esterna impedisce di cancellarlo"}}
+
+HTTP/1.1 204 No Content
+```
+
+`204` = fatto, e **non c'è corpo** (attenzione a non chiamare `.json()` su una risposta vuota). Un secondo `DELETE /books/81` darebbe `404`: lo stato è lo stesso (idempotenza), cambia solo il codice.
+
+### 6. Il dataset pubblico non cambia
+
+<Curl cmd={`curl -sS 'https://corso-api-json.giuseppebosi.com/api/v1/books?q=mio%20primo' | jq .meta.total`} spiega={[
+  ['(nessun -H Authorization)', 'senza token leggi il dataset pubblico: il libro "Il mio primo libro" non esiste lì'],
+  ['%20', 'lo spazio codificato nella query string'],
+]} />
+
+```
+0
+```
+
+### 7. Azzerare o eliminare
+
+<Curl cmd={`curl -sS -X POST https://corso-api-json.giuseppebosi.com/api/v1/sandbox/reset -H "Authorization: Bearer $TOKEN"
+curl -sS -i -X DELETE https://corso-api-json.giuseppebosi.com/api/v1/sandbox -H "Authorization: Bearer $TOKEN"`} spiega={[
+  ['POST /sandbox/reset', 'riporta la copia ai dati iniziali; il token resta valido'],
+  ['DELETE /sandbox', 'cancella la copia e invalida il token (<code>204</code>). Per continuare, crea una sandbox nuova'],
+]} />
+
+## Python e TypeScript
+
+Il ciclo completo: crea sandbox → POST → PATCH → DELETE, con controllo dello status e lettura di `Location`.
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# python3 scritture.py
+import httpx
+
+base = "https://corso-api-json.giuseppebosi.com/api/v1"
+with httpx.Client(base_url=base) as c:
+    token = c.post("/sandbox").raise_for_status().json()["token"]
+    c.headers["Authorization"] = f"Bearer {token}"      # da qui in poi tutte le richieste lo portano
+
+    nuovo = {"title": "Il mio primo libro", "author_id": 3, "category_id": 2, "price": 12.5, "tags": ["novità"]}
+    r = c.post("/books", json=nuovo)       # json= serializza e mette Content-Type: application/json
+    r.raise_for_status()
+    print(r.status_code, r.headers["location"])        # 201 …/api/v1/books/81
+    libro = r.json()
+
+    r = c.patch(f'/books/{libro["id"]}', json={"price": 9.9})
+    print(r.status_code, r.json()["price"])            # 200 9.9
+
+    r = c.delete(f'/books/{libro["id"]}')
+    print(r.status_code, repr(r.text))                 # 204 ''  ← nessun corpo
+
+    r = c.delete("/books/1")                           # FK: è in ordini
+    print(r.status_code, r.json()["error"]["code"])    # 409 book_in_orders
+
+    c.delete("/sandbox")                               # pulizia
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types scritture.ts
+const base = "https://corso-api-json.giuseppebosi.com/api/v1";
+const token = (await (await fetch(base + "/sandbox", { method: "POST" })).json()).token;
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+const nuovo = { title: "Il mio primo libro", author_id: 3, category_id: 2, price: 12.5, tags: ["novità"] };
+let r = await fetch(base + "/books", { method: "POST", headers, body: JSON.stringify(nuovo) });
+if (!r.ok) throw new Error("HTTP " + r.status);
+console.log(r.status, r.headers.get("location"));      // 201 …/api/v1/books/81
+const libro = await r.json();
+
+r = await fetch(`${base}/books/${libro.id}`, { method: "PATCH", headers, body: JSON.stringify({ price: 9.9 }) });
+console.log(r.status, (await r.json()).price);          // 200 9.9
+
+r = await fetch(`${base}/books/${libro.id}`, { method: "DELETE", headers });
+console.log(r.status, JSON.stringify(await r.text()));  // 204 ""  ← nessun corpo: niente .json()
+
+r = await fetch(`${base}/books/1`, { method: "DELETE", headers });
+console.log(r.status, (await r.json()).error.code);     // 409 book_in_orders
+
+await fetch(base + "/sandbox", { method: "DELETE", headers });   // pulizia
+```
+</TabItem>
+</Tabs>
+
+<Aside type="note">
+In Python `json=` fa tre cose: serializza il dict, imposta `Content-Type: application/json`, codifica in UTF-8. In JavaScript le fai a mano: `JSON.stringify` + l'header. Dimenticare l'header è l'errore più frequente.
+</Aside>
+
+## Prova subito
+
+Con la sandbox creata dal pannello in alto:
+
+<Prova method="POST" path="/api/v1/books" sandbox body={{"title": "Il mio primo libro", "author_id": 3, "category_id": 2, "price": 12.5, "tags": ["novità"]}} titolo="crea un libro (guarda status 201 e l'header Location)" />
+<Prova method="PATCH" path="/api/v1/books/81" sandbox body={{"price": 9.9, "in_stock": false}} titolo="modifica due campi del libro 81 (se non esiste, crealo prima)" />
+<Prova method="DELETE" path="/api/v1/books/1" sandbox titolo="prova a cancellare il libro 1: 409" />
+<Prova method="DELETE" path="/api/v1/books/81" sandbox titolo="cancella il libro 81: 204, corpo vuoto" />
+<Prova method="POST" path="/api/v1/books" body={{"title": "senza token", "author_id": 1, "category_id": 1, "price": 1}} titolo="lo stesso POST senza token: 401" />
+
+## Esercizio
+
+1. Crea un cliente (`POST /api/v1/customers` con `name`, `email`, `city`), poi crea un **secondo** cliente con la stessa email. Che status ottieni e con quale `code`?
+2. Crea un libro, poi fagli un `PUT` che contiene solo `title`, `author_id`, `category_id`, `price`. Confronta `attributes` prima e dopo. Poi rifai la stessa modifica del titolo con `PATCH` su un libro nuovo: cosa cambia?
+3. Cancella la sandbox e riprova un `GET /api/v1/sandbox/me` con il vecchio token.
+
+<details>
+<summary>Soluzione</summary>
+
+1. `409 Conflict`, `code: "duplicate_email"`: l'email è unica nella tabella.
+2. Dopo il `PUT`, `attributes` è `{}` e `tags` è `[]`; dopo il `PATCH` sono intatti. Regola: PUT = "ecco com'è ora l'oggetto, per intero".
+3. `401` con `code: "invalid_token"`: la copia non esiste più.
+</details>
+
+## Errori comuni
+
+- **`.json()` su un 204**: corpo vuoto → `JSONDecodeError` / `SyntaxError: Unexpected end of JSON input`. Controlla lo status prima.
+- **PUT con corpo parziale** credendo che sia un PATCH: dati azzerati.
+- **Token tra apici singoli** in curl (`'Bearer $TOKEN'`): 401.
+- **Riusare un id dopo il reset**: `POST /sandbox/reset` riporta gli id al dataset iniziale; il libro 81 non esiste più.
+- **Condividere il token** (in uno screenshot, in un repo): chiunque può scrivere nella tua copia.
+
+## In sintesi
+
+`POST /sandbox` → token → `Authorization: Bearer`. POST crea (201 + Location), PUT sostituisce, PATCH ritocca, DELETE elimina (204). Le chiavi esterne proteggono i dati (409). Prossimo capitolo: tutti gli errori che un'API può rispondere, e come gestirli nel codice.

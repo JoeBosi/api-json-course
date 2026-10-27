@@ -1,0 +1,275 @@
+---
+title: "17. Progetto finale"
+description: "Un programma completo: crea una sandbox, legge lo schema, sincronizza libri e autori in un SQLite locale, crea un cliente e un ordine, lo paga e confronta un report locale (JOIN) con le statistiche dell'API."
+---
+import { Tabs, TabItem, Aside, Steps } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+
+## Obiettivi
+
+Mettere insieme tutto quello che hai imparato nella Sezione 2 in **un solo programma**, in Python o in TypeScript, che:
+
+<Steps>
+1. crea una sandbox e usa il token per tutte le chiamate;
+2. legge `GET /schema` per conoscere tabelle, chiavi primarie ed esterne, e scarica catalogo e autori **pagina per pagina**;
+3. ricostruisce le tabelle in un **SQLite locale** con le stesse chiavi (`books.author_id → authors.id`);
+4. crea un cliente e un ordine con più righe (transazione), poi lo porta a `paid`;
+5. produce un report con un `GROUP BY` **locale** e lo confronta con `GET /stats` del server: devono coincidere.
+</Steps>
+
+## Teoria: sincronizzare, non copiare a mano
+
+Molte applicazioni reali fanno esattamente questo: leggono da un'API e tengono una **copia locale** interrogabile (cache, reportistica, app offline). I punti di attenzione:
+
+- **Paginazione completa**: segui `links.next` finché è `null`; fermarsi alla prima pagina è l'errore più comune.
+- **Stesse chiavi**: conserva gli `id` remoti come chiavi primarie locali, così le FK restano valide e i JOIN locali funzionano.
+- **Espansione mirata**: `?expand=category` ti dà lo `slug` della categoria in una sola chiamata, invece di 80 chiamate a `/categories`.
+- **Idempotenza della sincronizzazione**: rilanciare lo script non deve duplicare (qui: `DROP TABLE IF EXISTS` e ricreazione; in produzione `INSERT … ON CONFLICT DO UPDATE`).
+- **Verifica**: un numero calcolato in locale confrontato con lo stesso numero calcolato dal server è il test più semplice ed efficace.
+
+<Aside type="note" title="SQLite in TypeScript">
+Node 22 include il modulo `node:sqlite` (`DatabaseSync`), ancora sperimentale: si abilita con `--experimental-sqlite` (verificato con Node 22.23). Se il tuo Node non lo ha, salva i dati in un file JSON e fai il report con `Array.reduce`: la logica non cambia.
+</Aside>
+
+## curl, spiegato opzione per opzione
+
+Prima di scrivere codice, la sequenza a mano, per vedere ogni passo:
+
+<Curl cmd={`BASE=https://corso-api-json.giuseppebosi.com/api/v1
+TOKEN=$(curl -s -X POST $BASE/sandbox | python3 -c 'import sys, json; print(json.load(sys.stdin)["token"])')
+AUTH="Authorization: Bearer $TOKEN"
+
+# 1. lo schema: quali tabelle, quante righe, quali chiavi
+curl -s $BASE/schema -H "$AUTH" | python3 -c 'import sys, json
+for nome, t in json.load(sys.stdin)["tables"].items():
+    fk = ", ".join(f"{f[\"column\"]}→{f[\"references\"][\"table\"]}" for f in t["foreign_keys"])
+    print(f"{nome:<12} {t[\"rows\"]:>4} righe  PK {t[\"primary_key\"]}  FK {fk}")'
+
+# 2. tutte le pagine del catalogo, con la categoria espansa
+for page in 1 2; do
+  curl -s "$BASE/books?expand=category&limit=50&page=$page" -H "$AUTH" | python3 -c 'import sys, json
+d = json.load(sys.stdin); print(f"pagina {d[\"meta\"][\"page\"]}/{d[\"meta\"][\"pages\"]}: {len(d[\"items\"])} libri, next={d[\"links\"][\"next\"]}")'
+done`} spiega={[
+  ['BASE=… / AUTH=…', 'variabili di shell per non ripetere URL e header; <code>$BASE</code> e <code>"$AUTH"</code> vengono sostituiti'],
+  ['# …', 'commenti della shell: ignorati'],
+  ["python3 -c '…' su più righe", 'un piccolo programma Python passato come stringa: legge il JSON e stampa una riga per tabella'],
+  ['f"{t["rows"]:>4}"', 'f-string con doppi apici dentro doppi apici: serve Python 3.12 o superiore'],
+  ['for page in 1 2', 'due pagine da 50 coprono gli 80 libri; nello script vero il ciclo si ferma quando <code>links.next</code> è <code>null</code>'],
+]} />
+
+```text
+authors        20 righe  PK ['id']  FK
+book_tags     126 righe  PK ['book_id', 'tag_id']  FK tag_id→tags, book_id→books
+books          80 righe  PK ['id']  FK category_id→categories, author_id→authors
+categories     10 righe  PK ['id']  FK parent_id→categories
+customers      40 righe  PK ['id']  FK
+order_items   305 righe  PK ['id']  FK book_id→books, order_id→orders
+orders        120 righe  PK ['id']  FK customer_id→customers
+reviews       243 righe  PK ['id']  FK customer_id→customers, book_id→books
+tags           10 righe  PK ['id']  FK
+pagina 1/2: 50 libri, next=https://…/books?expand=category&limit=50&page=2
+pagina 2/2: 30 libri, next=None
+```
+
+Poi cliente, ordine, pagamento e confronto — esattamente ciò che lo script automatizza:
+
+```bash
+curl -s -X POST $BASE/customers -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"name": "Mario Verdi", "email": "mario.verdi@example.com", "city": "Bologna"}'
+# → {"id":41,"name":"Mario Verdi",…}
+curl -s -X POST $BASE/orders -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"customer_id": 41, "items": [{"book_id": 12, "quantity": 1}, {"book_id": 3, "quantity": 2}],
+       "shipping_address": {"street": "Via Zamboni 7", "city": "Bologna", "zip": "40126"}}'
+# → {"id":121,"status":"pending","total":96.81,"items":[…]}
+curl -s -X PATCH $BASE/orders/121 -H "$AUTH" -H 'Content-Type: application/json' -d '{"status": "paid"}'
+# → {"id":121,"status":"paid",…}
+curl -s $BASE/stats | python3 -c 'import sys, json; [print(c) for c in json.load(sys.stdin)["books_by_category"]]'
+curl -s -X DELETE $BASE/sandbox -H "$AUTH"      # pulizia: 204
+```
+
+## Python e TypeScript: il programma completo
+
+Entrambi sono stati eseguiti e producono l'output riportato dopo il codice.
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx   →   python3 progetto.py
+"""Progetto finale: sincronizza il catalogo in un SQLite locale, crea un ordine in sandbox,
+produce un report con JOIN locali e lo confronta con /stats."""
+import sqlite3
+
+import httpx
+
+BASE = "https://corso-api-json.giuseppebosi.com/api/v1"
+
+# (a) sandbox
+token = httpx.post(f"{BASE}/sandbox").json()["token"]
+api = httpx.Client(base_url=BASE, headers={"Authorization": f"Bearer {token}"}, timeout=15)
+
+# (b) schema e catalogo
+schema = api.get("/schema").json()["tables"]
+print("tabelle remote:", ", ".join(f"{t} ({v['rows']})" for t, v in schema.items()))
+
+
+def tutte(path, **params):
+    """Generatore: scorre tutte le pagine finché links.next è null."""
+    page = 1
+    while True:
+        d = api.get(path, params={**params, "page": page, "limit": 100}).json()
+        yield from d["items"]
+        if not d["links"]["next"]:
+            return
+        page += 1
+
+
+# (c) SQLite locale con le stesse chiavi
+db = sqlite3.connect("libreria_locale.db")
+db.executescript("""
+DROP TABLE IF EXISTS books; DROP TABLE IF EXISTS authors;
+CREATE TABLE authors (id INTEGER PRIMARY KEY, name TEXT, country TEXT);
+CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT, price REAL, category TEXT,
+                    author_id INTEGER REFERENCES authors(id));
+""")
+db.executemany("INSERT INTO authors VALUES (?,?,?)", [(a["id"], a["name"], a["country"]) for a in tutte("/authors")])
+db.executemany("INSERT INTO books VALUES (?,?,?,?,?)",
+               [(b["id"], b["title"], b["price"], b["category"]["slug"], b["author_id"]) for b in tutte("/books", expand="category")])
+print("libri locali:", db.execute("SELECT COUNT(*) FROM books").fetchone()[0])
+
+# (d) un cliente e un ordine, poi pagamento
+cliente = api.post("/customers", json={"name": "Mario Verdi", "email": "mario.verdi@example.com", "city": "Bologna"}).json()
+ordine = api.post("/orders", json={"customer_id": cliente["id"], "items": [{"book_id": 12, "quantity": 1}, {"book_id": 3, "quantity": 2}],
+                                    "shipping_address": {"street": "Via Zamboni 7", "city": "Bologna", "zip": "40126"}}).json()
+ordine = api.patch(f"/orders/{ordine['id']}", json={"status": "paid"}).json()
+print(f"ordine {ordine['id']}: {ordine['status']}, totale {ordine['total']} €")
+
+# (e) report: JOIN locale vs aggregazione remota
+print("\nLibri e prezzo medio per categoria (JOIN locale):")
+locale = {r[0]: (r[1], r[2]) for r in db.execute(
+    "SELECT category, COUNT(*), ROUND(AVG(price),2) FROM books GROUP BY category ORDER BY 2 DESC")}
+remoto = {r["slug"]: (r["books"], r["avg_price"]) for r in api.get("/stats").json()["books_by_category"]}
+for cat, (n, media) in locale.items():
+    print(f"  {cat:<13} {n:>2} libri  media {media:>6.2f} €   remoto: {remoto[cat]}  {'OK' if remoto[cat] == (n, media) else 'DIVERSO'}")
+api.delete("/sandbox")
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types --experimental-sqlite progetto.ts   (Node 22.5+; package.json con "type": "module")
+import { DatabaseSync } from "node:sqlite";
+
+const BASE = "https://corso-api-json.giuseppebosi.com/api/v1";
+
+// (a) sandbox
+const { token } = await (await fetch(`${BASE}/sandbox`, { method: "POST" })).json();
+const api = async (method: string, path: string, body?: unknown) => {
+  const r = await fetch(BASE + path, { method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body) });
+  if (!r.ok && r.status !== 204) throw new Error(`${method} ${path}: ${r.status} ${await r.text()}`);
+  return r.status === 204 ? null : r.json();
+};
+
+// (b) schema e catalogo
+const schema = (await api("GET", "/schema")).tables;
+console.log("tabelle remote:", Object.entries(schema).map(([t, v]: any) => `${t} (${v.rows})`).join(", "));
+async function tutte(path: string, params: Record<string, string> = {}) {
+  const out: any[] = [];
+  for (let page = 1; ; page++) {                                   // finché links.next è null
+    const d = await api("GET", `${path}?${new URLSearchParams({ ...params, page: String(page), limit: "100" })}`);
+    out.push(...d.items);
+    if (!d.links.next) return out;
+  }
+}
+
+// (c) SQLite locale con le stesse chiavi
+const db = new DatabaseSync("libreria_locale.db");
+db.exec(`DROP TABLE IF EXISTS books; DROP TABLE IF EXISTS authors;
+  CREATE TABLE authors (id INTEGER PRIMARY KEY, name TEXT, country TEXT);
+  CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT, price REAL, category TEXT, author_id INTEGER REFERENCES authors(id));`);
+const insA = db.prepare("INSERT INTO authors VALUES (?,?,?)");
+for (const a of await tutte("/authors")) insA.run(a.id, a.name, a.country);
+const insB = db.prepare("INSERT INTO books VALUES (?,?,?,?,?)");
+for (const b of await tutte("/books", { expand: "category" })) insB.run(b.id, b.title, b.price, b.category.slug, b.author_id);
+console.log("libri locali:", (db.prepare("SELECT COUNT(*) AS n FROM books").get() as any).n);
+
+// (d) un cliente e un ordine, poi pagamento
+const cliente = await api("POST", "/customers", { name: "Mario Verdi", email: "mario.verdi@example.com", city: "Bologna" });
+let ordine = await api("POST", "/orders", { customer_id: cliente.id, items: [{ book_id: 12, quantity: 1 }, { book_id: 3, quantity: 2 }],
+  shipping_address: { street: "Via Zamboni 7", city: "Bologna", zip: "40126" } });
+ordine = await api("PATCH", `/orders/${ordine.id}`, { status: "paid" });
+console.log(`ordine ${ordine.id}: ${ordine.status}, totale ${ordine.total} €`);
+
+// (e) report: JOIN locale vs aggregazione remota
+console.log("\nLibri e prezzo medio per categoria (JOIN locale):");
+const remoto = new Map<string, [number, number]>((await api("GET", "/stats")).books_by_category.map((r: any) => [r.slug, [r.books, r.avg_price]]));
+for (const r of db.prepare("SELECT category, COUNT(*) AS n, ROUND(AVG(price),2) AS media FROM books GROUP BY category ORDER BY n DESC").all() as any[]) {
+  const [n, media] = remoto.get(r.category)!;
+  console.log(`  ${r.category.padEnd(13)} ${String(r.n).padStart(2)} libri  media ${r.media.toFixed(2).padStart(6)} €   remoto: ${n}, ${media}  ${n === r.n && media === r.media ? "OK" : "DIVERSO"}`);
+}
+await api("DELETE", "/sandbox");
+```
+</TabItem>
+</Tabs>
+
+Output:
+
+```text
+tabelle remote: authors (20), book_tags (126), books (80), categories (10), customers (40), order_items (305), orders (120), reviews (243), tags (10)
+libri locali: 80
+ordine 121: paid, totale 96.81 €
+
+Libri e prezzo medio per categoria (JOIN locale):
+  saggistica    14 libri  media  17.04 €   remoto: (14, 17.04)  OK
+  ragazzi       12 libri  media  16.72 €   remoto: (12, 16.72)  OK
+  cucina         9 libri  media  18.39 €   remoto: (9, 18.39)  OK
+  narrativa      8 libri  media  22.78 €   remoto: (8, 22.78)  OK
+  storici        7 libri  media  19.96 €   remoto: (7, 19.96)  OK
+  storia         7 libri  media  24.31 €   remoto: (7, 24.31)  OK
+  informatica    7 libri  media  19.11 €   remoto: (7, 19.11)  OK
+  scienza        6 libri  media  22.11 €   remoto: (6, 22.11)  OK
+  fantascienza   6 libri  media  27.67 €   remoto: (6, 27.67)  OK
+  gialli         4 libri  media  15.70 €   remoto: (4, 15.7)  OK
+```
+
+Dieci `OK`: il tuo database locale e il server raccontano la stessa storia.
+
+## Prova subito
+
+I pezzi del progetto, uno per uno:
+
+<Prova path="/api/v1/schema" titolo="1. lo schema con PK e FK" />
+<Prova path="/api/v1/books?expand=category&limit=100" titolo="2. il catalogo con la categoria espansa" />
+<Prova method="POST" path="/api/v1/customers" sandbox titolo="3. un cliente" body={{ name: "Mario Verdi", email: "mario.verdi@example.com", city: "Bologna" }} />
+<Prova method="POST" path="/api/v1/orders" sandbox titolo="4. un ordine (usa l'id del cliente appena creato)" body={{ customer_id: 41, items: [{ book_id: 12, quantity: 1 }, { book_id: 3, quantity: 2 }], shipping_address: { street: "Via Zamboni 7", city: "Bologna", zip: "40126" } }} />
+<Prova method="PATCH" path="/api/v1/orders/121" sandbox titolo="5. pagamento" body={{ status: "paid" }} />
+<Prova path="/api/v1/stats" titolo="6. il riscontro" />
+
+## Estensioni (scegline una)
+
+1. **Sincronizzazione incrementale**: aggiungi `orders` e `order_items` al database locale e, con un `JOIN` locale a quattro tabelle, riproduci `GET /stats/sales?group_by=city`. Confronta.
+2. **Robustezza**: sostituisci le chiamate dirette con la `LibreriaClient` del capitolo 16 (timeout, retry, tipi).
+3. **Cache**: conserva gli `ETag` di `/books/{id}` e, a una seconda esecuzione, riscarica solo i libri cambiati (capitolo 14).
+4. **CLI**: trasforma lo script in un comando con argomenti (`--citta Bologna --libri 12,3`) usando `argparse` o `node:util.parseArgs`.
+
+<details>
+<summary>Traccia per l'estensione 1</summary>
+
+Tabelle locali `customers(id, name, city)`, `orders(id, customer_id, status, created_at)`, `order_items(order_id, book_id, quantity, unit_price)`. Poi:
+
+```sql
+SELECT cu.city, COUNT(DISTINCT o.id) AS orders, SUM(oi.quantity) AS books_sold,
+       ROUND(SUM(oi.quantity * oi.unit_price), 2) AS revenue
+FROM orders o JOIN customers cu ON cu.id = o.customer_id
+JOIN order_items oi ON oi.order_id = o.id
+WHERE o.status != 'cancelled' GROUP BY cu.city ORDER BY cu.city
+```
+
+Ricorda che nella tua sandbox c'è anche l'ordine che hai creato: per confrontare con il dataset pubblico, chiama `/stats/sales` **senza** token.
+</details>
+
+## Cosa sai fare adesso
+
+Hai attraversato la Sezione 2 da un `GET` con curl fino a un programma che dialoga con un'API su più tabelle legate da chiavi, gestisce transazioni, errori, cache e limiti, e verifica il proprio lavoro. Le stesse idee — risorse, query string, `expand`, sandbox, `409` e `422`, ETag, `Retry-After`, JOIN e aggregazioni — le ritroverai identiche in ogni API seria che incontrerai: cambiano i nomi, non la sostanza.
+
+Riferimenti utili per continuare: [tutti gli endpoint](/riferimento/endpoint/), [il dataset](/riferimento/dataset/), [cheatsheet curl](/riferimento/curl/), [glossario](/riferimento/glossario/).

@@ -1,0 +1,40 @@
+---
+/**
+ * Piè di pagina: tiene quello di Starlight (navigazione, data di ultimo aggiornamento) e
+ * aggiunge le diciture dell'opera: autore, contatto, licenza, crediti, privacy e il fatto
+ * che i testi sono stati scritti con l'aiuto dell'IA e riletti dall'autore.
+ */
+import Default from '@astrojs/starlight/components/Footer.astro';
+---
+
+<Default><slot /></Default>
+
+<footer class="corso-footer not-content">
+  <p>
+    <strong>Corso JSON &amp; API</strong> di Giuseppe Bosi — opera di divulgazione gratuita.
+    Scrivi a <a href="mailto:info@giuseppebosi.com">info@giuseppebosi.com</a>.
+  </p>
+  <p>
+    Testi <a href="https://creativecommons.org/licenses/by/4.0/deed.it" rel="license noopener" target="_blank">CC BY 4.0</a>,
+    codice degli esempi <a href="/crediti/#licenza">MIT</a> ·
+    <a href="/crediti/">Crediti e licenze</a> ·
+    <a href="/privacy/">Privacy</a>
+  </p>
+  <p class="corso-footer__ia">
+    Scritto con l'aiuto dell'intelligenza artificiale e riletto dall'autore. Gli esempi sono
+    eseguiti contro l'API del corso, non riprodotti a memoria.
+  </p>
+</footer>
+
+<style>
+  .corso-footer {
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--sl-color-hairline);
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+  .corso-footer p { margin: .3rem 0; }
+  .corso-footer a { color: inherit; text-decoration: underline; }
+  .corso-footer__ia { font-style: italic; }
+</style>

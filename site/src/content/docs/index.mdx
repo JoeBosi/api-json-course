@@ -1,0 +1,39 @@
+---
+title: Corso JSON & API
+description: Da 0 a esperto su JSON (Python e TypeScript) e sull'interrogazione di database tramite API, con un server di prova su cui esercitarsi subito.
+template: splash
+hero:
+  tagline: "Due percorsi, un server di prova pubblico e zero installazioni per iniziare: leggi, esegui, capisci."
+  actions:
+    - text: Inizia dalla Sezione 1
+      link: /json/01-cos-e-json/
+      icon: right-arrow
+    - text: Vai alla Sezione 2
+      link: /db-api/01-http-e-rest/
+      variant: minimal
+    - text: API di prova (Swagger)
+      link: /api/docs
+      variant: minimal
+      icon: external
+---
+import { Card, CardGrid } from '@astrojs/starlight/components';
+import Prova from '../../components/Prova.astro';
+
+<CardGrid stagger>
+  <Card title="Sezione 1 · JSON da 0 a esperto" icon="document">
+    Sintassi, tipi, trappole, `json` in Python, `JSON.parse` in JavaScript, tipizzazione in TypeScript e pydantic, JSON Schema, streaming, performance, JSON nei database. 15 capitoli.
+  </Card>
+  <Card title="Sezione 2 · Database tramite API" icon="rocket">
+    HTTP e REST, curl spiegato opzione per opzione, filtri e paginazione, relazioni e chiavi esterne, scritture in sandbox, errori, autenticazione, full-text, aggregazioni, query strutturate, SQL con JOIN via API, transazioni, cache, sicurezza. 17 capitoli.
+  </Card>
+  <Card title="Un server vero su cui provare" icon="setting">
+    Ogni esempio gira contro `https://corso-api-json.giuseppebosi.com/api/v1`: un catalogo di libri con autori, categorie, clienti, ordini e recensioni. Con una **sandbox** personale puoi anche scrivere.
+  </Card>
+  <Card title="Python e TypeScript affiancati" icon="laptop">
+    Ogni esempio è mostrato in curl, Python e TypeScript. Scegli la tua scheda una volta e il sito la ricorda su tutte le pagine.
+  </Card>
+</CardGrid>
+
+## Prova adesso, senza installare nulla
+
+<Prova path="/api/v1/books?limit=3&sort=-price" titolo="i tre libri più cari del catalogo" />

@@ -1,0 +1,210 @@
+---
+title: "3. Primo GET in Python e TypeScript"
+description: "La stessa richiesta con httpx e con fetch: status, header, corpo JSON, la busta items/meta/links e il controllo degli errori."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+
+## Obiettivi
+
+- Fare una `GET` da Python (`httpx`) e da TypeScript (`fetch`) e leggere status, header e corpo.
+- Passare parametri di query senza scriverli a mano nell'URL.
+- Capire la **busta** delle risposte di elenco: `items`, `meta`, `links`.
+- Trasformare uno status di errore in un'eccezione (o in un `if`) invece di ignorarlo.
+
+## Teoria
+
+### Le due librerie
+
+| | Python: `httpx` | TypeScript: `fetch` |
+|---|---|---|
+| Installazione | `pip install httpx` | nessuna: integrato in Node ≥ 18 e nei browser |
+| Chiamata | `httpx.get(url, params=…, headers=…)` | `await fetch(url, { headers })` |
+| Status | `r.status_code` (int) | `r.status` (number), `r.ok` (true se 2xx) |
+| Header | `r.headers["content-type"]` (dict insensibile alle maiuscole) | `r.headers.get("content-type")` |
+| Corpo JSON | `r.json()` → `dict`/`list` | `await r.json()` → oggetto/array |
+| Corpo testo | `r.text` | `await r.text()` |
+| Errore su 4xx/5xx | **no**, finché non chiami `r.raise_for_status()` | **no**: `fetch` lancia solo per errori di rete; `r.ok` va controllato |
+| Query string | `params={"limit": 3}` → codifica automatica | `new URL(...)` + `url.searchParams.set(...)` |
+
+<Aside type="tip" title="Perché httpx e non requests?">
+`requests` funziona ancora benissimo e ha la stessa forma (`requests.get(...)`, `.json()`, `.raise_for_status()`). `httpx` ha la stessa API, in più supporta HTTP/2, `async` e un `Client` con `base_url`. Tutto ciò che vedi qui vale anche per `requests`, cambiando il nome del modulo.
+</Aside>
+
+### La busta delle liste
+
+Quando chiedi una **collezione** (`/books`, `/authors`, `/orders`…) questo server — come molte API — non restituisce un array nudo ma un oggetto:
+
+```json
+{
+  "items": [ … ],                                   ← i dati veri
+  "meta":  { "page": 1, "limit": 3, "total": 80, "pages": 27 },   ← quanti sono, dove sei
+  "links": { "self": "…", "next": "…?page=2&limit=3", "prev": null }  ← come continuare
+}
+```
+
+Perché? Un array nudo non può dire "ce ne sono altri 77". La busta sì, e permette di aggiungere campi in futuro senza rompere i client. Le risorse **singole** (`/books/1`) invece sono l'oggetto e basta.
+
+## curl, spiegato
+
+<Curl cmd={`curl -sS -G https://corso-api-json.giuseppebosi.com/api/v1/books \\
+  --data-urlencode 'limit=3' --data-urlencode 'sort=-price' | python3 -m json.tool`} spiega={[
+  ['-G --data-urlencode', 'i due parametri finiscono nella query string: <code>?limit=3&amp;sort=-price</code>'],
+  ['limit=3', 'massimo 3 elementi nella pagina'],
+  ['sort=-price', 'ordina per prezzo; il <code>-</code> davanti = decrescente'],
+  ['| python3 -m json.tool', 'riformatta con i rientri'],
+]} />
+
+```json
+{
+    "items": [
+        { "id": 12, "title": "Quello che resta di Sestri", "price": 34.49, … },
+        { "id": 79, "title": "Ustica e il Novecento",      "price": 34.36, … },
+        { "id": 29, "title": "La cucina di Ustica",        "price": 33.49, … }
+    ],
+    "meta": { "page": 1, "limit": 3, "total": 80, "pages": 27 },
+    "links": {
+        "self": "https://corso-api-json.giuseppebosi.com/api/v1/books?limit=3&sort=-price&page=1",
+        "next": "https://corso-api-json.giuseppebosi.com/api/v1/books?limit=3&sort=-price&page=2",
+        "prev": null
+    }
+}
+```
+
+## Python e TypeScript
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx  →  python3 primo_get.py
+import httpx
+
+r = httpx.get(
+    "https://corso-api-json.giuseppebosi.com/api/v1/books",
+    params={"limit": 3, "sort": "-price"},   # httpx costruisce e codifica la query string
+)
+print(r.status_code, r.headers["content-type"])   # 200 application/json
+r.raise_for_status()      # se lo status è 4xx/5xx solleva httpx.HTTPStatusError: meglio fermarsi qui
+
+dati = r.json()           # dict Python
+print("totale libri:", dati["meta"]["total"])
+for libro in dati["items"]:
+    print(f'{libro["id"]:>3}  {libro["title"]:<32} {libro["price"]:>6.2f} €')
+print("pagina successiva:", dati["links"]["next"])
+```
+Output:
+```
+200 application/json
+totale libri: 80
+ 12  Quello che resta di Sestri        34.49 €
+ 79  Ustica e il Novecento             34.36 €
+ 29  La cucina di Ustica               33.49 €
+pagina successiva: https://corso-api-json.giuseppebosi.com/api/v1/books?sort=-price&page=2&limit=3
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types primo_get.ts   (Node 22; da Node 23 senza flag)
+const url = new URL("https://corso-api-json.giuseppebosi.com/api/v1/books");
+url.searchParams.set("limit", "3");        // URL costruisce e codifica la query string
+url.searchParams.set("sort", "-price");
+
+const r = await fetch(url);
+console.log(r.status, r.headers.get("content-type"));   // 200 application/json
+if (!r.ok) throw new Error("HTTP " + r.status);          // fetch non lancia da solo sui 4xx/5xx
+
+const dati = await r.json();
+console.log("totale libri:", dati.meta.total);
+for (const libro of dati.items) {
+  console.log(String(libro.id).padStart(3), libro.title.padEnd(32), libro.price.toFixed(2), "€");
+}
+console.log("pagina successiva:", dati.links.next);
+```
+Output:
+```
+200 application/json
+totale libri: 80
+ 12 Quello che resta di Sestri       34.49 €
+ 79 Ustica e il Novecento            34.36 €
+ 29 La cucina di Ustica              33.49 €
+pagina successiva: https://corso-api-json.giuseppebosi.com/api/v1/books?sort=-price&page=2&limit=3
+```
+</TabItem>
+</Tabs>
+
+Tre cose da notare:
+
+1. **I parametri non sono nell'URL scritto a mano**: `params=` / `searchParams.set` li codificano (uno spazio diventa `%20`, un `&` in un valore diventa `%26`).
+2. **`r.json()`** in Python è sincrono; in JavaScript restituisce una *Promise* e va atteso con `await` (il corpo può arrivare a pezzi).
+3. **Lo status va controllato**: `raise_for_status()` e `if (!r.ok)`. Nel capitolo 7 lo faremo per bene.
+
+### Una risorsa singola
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+import httpx
+libro = httpx.get("https://corso-api-json.giuseppebosi.com/api/v1/books/12").raise_for_status().json()
+print(libro["title"], "-", libro["attributes"]["format"])   # Quello che resta di Sestri - …
+```
+`raise_for_status()` restituisce la risposta stessa, quindi si può concatenare.
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+const r = await fetch("https://corso-api-json.giuseppebosi.com/api/v1/books/12");
+if (!r.ok) throw new Error("HTTP " + r.status);
+const libro = await r.json();
+console.log(libro.title, "-", libro.attributes.format);   // Quello che resta di Sestri - …
+```
+</TabItem>
+</Tabs>
+
+## Prova subito
+
+<Prova path="/api/v1/books?limit=3&sort=-price" titolo="la busta items / meta / links" />
+<Prova path="/api/v1/books/12" titolo="una risorsa singola: niente busta" />
+
+## Esercizio
+
+Scrivi uno script che chiami `/api/v1/authors?limit=5` e stampi, per ogni autore, `name`, `country` e `books_count`. Poi stampa quante pagine ci sono in tutto (`meta.pages`). Bonus: chiama `/api/v1/authors/9999` e osserva cosa fa il tuo script *senza* controllo dello status.
+
+<details>
+<summary>Soluzione</summary>
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+import httpx
+r = httpx.get("https://corso-api-json.giuseppebosi.com/api/v1/authors", params={"limit": 5})
+r.raise_for_status()
+d = r.json()
+for a in d["items"]:
+    print(f'{a["name"]:<20} {a["country"]}  libri: {a["books_count"]}')
+print("pagine:", d["meta"]["pages"])
+```
+Senza `raise_for_status()`, `/authors/9999` restituisce 404 e `r.json()` ti dà `{"error": {...}}`: lo script prosegue e va in `KeyError` più avanti, lontano dalla causa.
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+const r = await fetch("https://corso-api-json.giuseppebosi.com/api/v1/authors?limit=5");
+if (!r.ok) throw new Error("HTTP " + r.status);
+const d = await r.json();
+for (const a of d.items) console.log(a.name.padEnd(20), a.country, " libri:", a.books_count);
+console.log("pagine:", d.meta.pages);
+```
+Senza `if (!r.ok)`, `/authors/9999` non lancia nulla: `d.error` esiste e `d.items` è `undefined` → `TypeError` più avanti.
+</TabItem>
+</Tabs>
+</details>
+
+## Errori comuni
+
+- **Costruire l'URL con f-string / template string** e valori non codificati: `f"...?q={testo}"` con `testo = "le estati"` manda uno spazio nudo. Usa `params=` / `searchParams`.
+- **Dimenticare `await`** su `r.json()` in JavaScript: ottieni una Promise, non i dati.
+- **Fidarsi di un 200 implicito**: senza `raise_for_status()`/`r.ok`, un 404 sembra "dati strani".
+- **Cercare i dati nella risposta di una lista come se fosse un array**: `dati[0]` → `KeyError`; i libri sono in `dati["items"]`.
+
+## In sintesi
+
+`httpx.get(url, params=…)` e `fetch(new URL(...))`; status, header, `json()`; busta `items/meta/links`; controlla sempre lo status. Nel prossimo capitolo useremo la query string sul serio: filtri, ordinamento, e un ciclo che scorre tutte le pagine.

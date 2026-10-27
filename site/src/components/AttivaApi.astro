@@ -1,0 +1,110 @@
+---
+/**
+ * Pannello "Attiva l'API di prova": mostra se l'API è accesa e, se è spenta, permette di
+ * accenderla con la password. L'API si rispegne da sola dopo un'ora senza chiamate.
+ * Gli endpoint /api/v1/interruttore rispondono anche con l'API spenta.
+ */
+const base = import.meta.env.PUBLIC_API_BASE ?? '';
+---
+<attiva-api class="attiva not-content" data-base={base}>
+  <p class="attiva__stato" data-stato>Controllo lo stato dell'API…</p>
+
+  <form class="attiva__form" data-form hidden>
+    <label>Password
+      <input type="password" data-password autocomplete="current-password" required
+             placeholder="password dell'API di prova" />
+    </label>
+    <button class="primario" type="submit" data-invia>Accendi l'API</button>
+    <p class="attiva__errore" data-errore hidden></p>
+  </form>
+
+  <p class="attiva__nota" data-nota hidden>
+    Finché resta accesa puoi eseguire tutti gli esempi del corso. Dopo un'ora senza chiamate
+    si spegne da sola e questa pagina te lo dirà.
+  </p>
+</attiva-api>
+
+<script>
+  class AttivaApi extends HTMLElement {
+    base = this.dataset.base ?? '';
+    timer: number | undefined;
+
+    connectedCallback() {
+      this.q<HTMLFormElement>('[data-form]').addEventListener('submit', (e) => this.accendi(e));
+      this.aggiorna();
+    }
+    disconnectedCallback() { clearTimeout(this.timer); }
+
+    q<T extends HTMLElement>(sel: string) { return this.querySelector(sel) as T; }
+
+    async chiedi(path: string, init?: RequestInit) {
+      const r = await fetch(`${this.base}/api/v1/interruttore${path}`, init);
+      return { ok: r.ok, stato: r.status, dati: await r.json().catch(() => ({})) };
+    }
+
+    async aggiorna() {
+      clearTimeout(this.timer);
+      try {
+        const { dati } = await this.chiedi('');
+        this.mostra(dati);
+        if (dati.attiva) this.timer = window.setTimeout(() => this.aggiorna(), 30_000);
+      } catch {
+        this.q('[data-stato]').textContent = 'Non riesco a contattare il server. Riprova più tardi.';
+      }
+    }
+
+    mostra(s: { attiva?: boolean; spegnimento_tra_s?: number; configurata?: boolean }) {
+      const stato = this.q('[data-stato]');
+      const form = this.q<HTMLFormElement>('[data-form]');
+      const nota = this.q('[data-nota]');
+      if (s.configurata === false) {
+        stato.textContent = 'L’interruttore non è ancora configurato sul server.';
+        form.hidden = true; nota.hidden = true;
+        return;
+      }
+      if (s.attiva) {
+        const min = Math.max(1, Math.round((s.spegnimento_tra_s ?? 0) / 60));
+        stato.innerHTML = `<b class="attiva__on">L’API di prova è accesa.</b> Si spegne fra circa ${min} minuti se nessuno la usa.`;
+        form.hidden = true; nota.hidden = false;
+      } else {
+        stato.innerHTML = '<b class="attiva__off">L’API di prova è spenta.</b> Inserisci la password per accenderla.';
+        form.hidden = false; nota.hidden = true;
+      }
+    }
+
+    async accendi(e: Event) {
+      e.preventDefault();
+      const campo = this.q<HTMLInputElement>('[data-password]');
+      const errore = this.q('[data-errore]');
+      const bottone = this.q<HTMLButtonElement>('[data-invia]');
+      bottone.disabled = true; errore.hidden = true;
+      try {
+        const { ok, dati } = await this.chiedi('/accendi', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: campo.value }),
+        });
+        if (ok) { campo.value = ''; this.mostra(dati); return; }
+        errore.textContent = dati?.error?.message ?? 'Non è stato possibile accendere l’API.';
+        errore.hidden = false;
+      } catch {
+        errore.textContent = 'Non riesco a contattare il server.';
+        errore.hidden = false;
+      } finally {
+        bottone.disabled = false;
+      }
+    }
+  }
+  customElements.define('attiva-api', AttivaApi);
+</script>
+
+<style>
+  .attiva { border: 1px solid var(--sl-color-gray-5); border-radius: .6rem; padding: 1rem; margin: 1rem 0; }
+  .attiva__form { display: flex; flex-wrap: wrap; gap: .6rem; align-items: end; }
+  .attiva__form label { display: flex; flex-direction: column; gap: .25rem; font-size: .9rem; }
+  .attiva__form input { padding: .4rem .6rem; border: 1px solid var(--sl-color-gray-5); border-radius: .4rem; min-width: 16rem; }
+  .attiva__form button { padding: .45rem .9rem; border-radius: .4rem; cursor: pointer; }
+  .attiva__on { color: var(--sl-color-green-high, green); }
+  .attiva__off { color: var(--sl-color-orange-high, #b35300); }
+  .attiva__errore { color: var(--sl-color-red-high, #b3261e); margin: .4rem 0 0; flex-basis: 100%; }
+  .attiva__nota, .attiva__stato { margin: .2rem 0; }
+</style>

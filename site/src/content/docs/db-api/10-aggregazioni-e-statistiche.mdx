@@ -1,0 +1,177 @@
+---
+title: "10. Aggregazioni e statistiche"
+description: "Conteggi, somme, medie e raggruppamenti esposti da un'API: /stats e /stats/sales, con GROUP BY, HAVING e un grafico testuale in Python e TypeScript."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+
+## Obiettivi
+
+- Capire cosa fa un'API quando restituisce "statistiche": `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` calcolati dal database.
+- Leggere una risposta aggregata e sapere da quali tabelle e JOIN viene.
+- Usare `GET /stats` e `GET /stats/sales?group_by=…&from=…&to=…` con curl, Python e TypeScript.
+- Disegnare un grafico testuale partendo dai numeri aggregati.
+
+## Teoria
+
+Finora hai chiesto **righe**: un libro, una lista di ordini. Le aggregazioni chiedono invece **numeri riassuntivi** su molte righe: quanti libri per categoria, l'incasso per mese, il voto medio di un autore. In SQL si ottengono con le **funzioni di aggregazione** e con `GROUP BY`:
+
+| Funzione | Cosa calcola | Esempio nel dataset |
+|---|---|---|
+| `COUNT(*)` | numero di righe del gruppo | libri per categoria |
+| `COUNT(DISTINCT x)` | valori distinti | ordini distinti che contengono un libro |
+| `SUM(x)` | somma | incasso (`quantity * unit_price`) |
+| `AVG(x)` | media | prezzo medio |
+| `MIN(x)` / `MAX(x)` | estremi | libro più economico / più caro |
+
+`GROUP BY colonna` divide le righe in gruppi (uno per valore della colonna) e ogni funzione lavora **dentro** il gruppo. `HAVING` filtra i gruppi *dopo* l'aggregazione (mentre `WHERE` filtra le righe *prima*).
+
+Un'API "fatta bene" non ti fa scaricare 300 righe di `order_items` per sommarle sul client: espone un endpoint che fa il calcolo nel database e restituisce solo il risultato. È più veloce, e soprattutto il risultato è **coerente** (una sola fonte di verità).
+
+<Aside type="note" title="Da quali tabelle vengono i numeri?">
+`/stats/sales` unisce **quattro** tabelle: `orders` (data e stato) → `order_items` (quantità e prezzo) → `books` (categoria, autore) → `categories`/`authors`/`customers` a seconda di `group_by`. La query esatta la vedrai nel capitolo 12 quando la scriverai tu con `/sql`.
+</Aside>
+
+## curl, spiegato opzione per opzione
+
+Il quadro generale del catalogo:
+
+<Curl cmd={`curl -s https://corso-api-json.giuseppebosi.com/api/v1/stats | python3 -m json.tool`} spiega={[
+  ['curl -s', 'richiesta GET silenziosa (niente barra di avanzamento)'],
+  ['/api/v1/stats', "endpoint di aggregazione: nessun parametro, restituisce un riassunto fisso"],
+  ['|', "la <em>pipe</em> della shell: l'output di curl diventa l'input del comando dopo"],
+  ['python3 -m json.tool', 'legge JSON dallo standard input e lo ristampa indentato (comodo per leggere risposte lunghe)'],
+]} />
+
+Risposta (abbreviata):
+
+```json
+{
+  "totals": { "books": 80, "authors": 20, "customers": 40, "orders": 120, "reviews": 243 },
+  "prices": { "min": 7.13, "avg": 19.9, "max": 34.49 },
+  "books_by_category": [
+    { "slug": "saggistica", "name": "Saggistica", "books": 14, "avg_price": 17.04 },
+    { "slug": "ragazzi", "name": "Ragazzi", "books": 12, "avg_price": 16.72 },
+    { "slug": "cucina", "name": "Cucina", "books": 9, "avg_price": 18.39 },
+    …
+  ],
+  "top_authors": [
+    { "id": 18, "name": "Matteo Rinaldi", "books": 8, "avg_rating": 4.22 },
+    { "id": 1, "name": "Elena Marchetti", "books": 6, "avg_rating": 3.12 },
+    …
+  ],
+  "orders_by_status": [
+    { "status": "cancelled", "orders": 18, "revenue": 1304.45 },
+    { "status": "delivered", "orders": 48, "revenue": 3820.12 },
+    …
+  ]
+}
+```
+
+Leggilo con le funzioni in mente: `totals` sono cinque `COUNT(*)`; `prices` è `MIN/AVG/MAX(price)` su `books`; `books_by_category` è un `GROUP BY categories.id` con `COUNT(b.id)` e `AVG(b.price)`; `orders_by_status` un `GROUP BY status` con `COUNT` e `SUM(total)`.
+
+Ora le vendite **per mese**, limitate a un periodo:
+
+<Curl cmd={`curl -s 'https://corso-api-json.giuseppebosi.com/api/v1/stats/sales?group_by=month&from=2025-01-01&to=2025-04-01'`} spiega={[
+  ["'…'", "apici singoli intorno all'URL: in molte shell <code>&amp;</code> significa \"esegui in background\"; tra apici è un carattere normale"],
+  ['?group_by=month', 'la query string inizia con <code>?</code>; <code>group_by</code> sceglie la colonna del <code>GROUP BY</code>: <code>month</code>, <code>category</code>, <code>author</code> o <code>city</code>'],
+  ['&from=2025-01-01', '<code>&amp;</code> separa i parametri; <code>from</code> è la data di inizio (inclusa), formato ISO 8601'],
+  ['&to=2025-04-01', "data di fine (esclusa): gennaio, febbraio e marzo"],
+]} />
+
+```json
+{
+  "group_by": "month",
+  "items": [
+    { "month": "2025-01", "orders": 5, "books_sold": 14, "revenue": 367.53 },
+    { "month": "2025-02", "orders": 4, "books_sold": 12, "revenue": 221.34 },
+    { "month": "2025-03", "orders": 6, "books_sold": 25, "revenue": 487.03 }
+  ]
+}
+```
+
+Tre colonne aggregate per gruppo: `orders` è `COUNT(DISTINCT o.id)` (un ordine con 3 righe conta una volta), `books_sold` è `SUM(oi.quantity)`, `revenue` è `SUM(oi.quantity * oi.unit_price)`. Gli ordini `cancelled` sono esclusi da un `WHERE` prima del raggruppamento.
+
+## Python e TypeScript
+
+Vendite per città, trasformate in un grafico a barre testuale. Il lavoro pesante (somme e raggruppamenti) lo fa il server; il client si occupa solo di ordinare e disegnare.
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx   →   python3 vendite.py
+import httpx
+
+BASE = "https://corso-api-json.giuseppebosi.com/api/v1"
+r = httpx.get(f"{BASE}/stats/sales", params={"group_by": "city"}, timeout=10)
+r.raise_for_status()                       # solleva un'eccezione se lo status non è 2xx
+righe = r.json()["items"]
+massimo = max(x["revenue"] for x in righe)
+for x in sorted(righe, key=lambda x: -x["revenue"]):
+    barra = "█" * round(30 * x["revenue"] / massimo)
+    print(f"{x['city']:<8} {barra:<30} {x['revenue']:>8.2f} € ({x['orders']} ordini)")
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types vendite.ts
+const BASE = "https://corso-api-json.giuseppebosi.com/api/v1";
+type Riga = { city: string; orders: number; books_sold: number; revenue: number };
+
+const r = await fetch(`${BASE}/stats/sales?group_by=city`);
+if (!r.ok) throw new Error(`HTTP ${r.status}`);
+const { items } = (await r.json()) as { items: Riga[] };
+const massimo = Math.max(...items.map((x) => x.revenue));
+for (const x of [...items].sort((a, b) => b.revenue - a.revenue)) {
+  const barra = "█".repeat(Math.round((30 * x.revenue) / massimo));
+  console.log(`${x.city.padEnd(8)} ${barra.padEnd(30)} ${x.revenue.toFixed(2).padStart(8)} € (${x.orders} ordini)`);
+}
+```
+</TabItem>
+</Tabs>
+
+Output (identico nei due linguaggi):
+
+```text
+Torino   ██████████████████████████████  1715.02 € (20 ordini)
+Padova   ████████████████████████████    1609.57 € (20 ordini)
+Firenze  █████████████████████████       1423.28 € (16 ordini)
+Napoli   ███████████████████             1059.56 € (12 ordini)
+Verona   █████████████                    749.61 € (9 ordini)
+Genova   ████████████                     658.60 € (10 ordini)
+Bari     ███████████                      614.68 € (8 ordini)
+Bologna  █████████                        496.76 € (6 ordini)
+Roma     ██                                93.14 € (1 ordini)
+```
+
+## Prova subito
+
+<Prova path="/api/v1/stats" titolo="riassunto del catalogo" />
+<Prova path="/api/v1/stats/sales?group_by=category" titolo="vendite per categoria" />
+<Prova path="/api/v1/stats/sales?group_by=author&from=2025-06-01" titolo="vendite per autore da giugno 2025" />
+
+## Esercizio
+
+1. Quale categoria ha l'**incasso** più alto? È la stessa con più **libri venduti**? (usa `group_by=category`).
+2. Scrivi uno script che chiama `/stats/sales?group_by=month` e stampa il mese migliore e quello peggiore.
+3. Perché `orders` in `/stats/sales` usa `COUNT(DISTINCT o.id)` e non `COUNT(*)`?
+
+<details>
+<summary>Soluzione</summary>
+
+1. Con `group_by=category`: **saggistica** ha l'incasso più alto (1489,55 €) **ed è anche prima per copie vendute** (82), seguita da narrativa (1460,82 € e 64 copie). Qui le due classifiche coincidono, ma non è detto: più in basso cucina vende 39 copie con un incasso (742,25 €) inferiore a quello di fantascienza, che ne vende 28 (834,10 €). Dipende dal prezzo medio.
+2. Dopo aver ottenuto `items`, `max(items, key=lambda x: x["revenue"])` e `min(...)` in Python; in TS ordina con `sort` e prendi il primo e l'ultimo.
+3. Perché la query unisce `orders` a `order_items`: un ordine con tre righe compare tre volte nel JOIN. `COUNT(*)` conterebbe le righe, `COUNT(DISTINCT o.id)` gli ordini.
+</details>
+
+## Errori comuni
+
+- **Aggregare sul client** scaricando tutte le righe: lento, e con la paginazione rischi di sommare solo la prima pagina.
+- **Confondere `WHERE` e `HAVING`**: `from`/`to` filtrano le *righe* (WHERE), "solo le categorie con più di 5 libri" filtra i *gruppi* (HAVING).
+- **Dimenticare gli stati**: un incasso che include gli ordini annullati è sbagliato. Chiedi sempre all'API (o alla documentazione) cosa esclude.
+- **Medie di medie**: la media dei prezzi medi per categoria non è il prezzo medio del catalogo.
+
+## In sintesi
+
+Le aggregazioni sono numeri calcolati dal database su gruppi di righe; l'API le espone come endpoint dedicati (`/stats`, `/stats/sales`) con parametri per scegliere il raggruppamento e il periodo. Nel prossimo capitolo passerai dall'altra parte: costruirai tu la query, in JSON, con `POST /query`.

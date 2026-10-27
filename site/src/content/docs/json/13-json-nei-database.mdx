@@ -1,0 +1,220 @@
+---
+title: "13. JSON nei database"
+description: "Colonne JSON in SQLite (json_extract, ->>, json_each, indici su espressione), come l'API le espone (?format=, attributes.* nelle query strutturate, /sql) e cenni a PostgreSQL jsonb e MongoDB."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+
+## Obiettivi
+
+- Capire quando una colonna JSON è una buona idea in un database relazionale (e quando no).
+- Interrogare JSON dentro SQLite: `json_extract`, `->>`, `json_each`, `json_type`, `json_object`.
+- Usare le tre porte che l'API offre sulla colonna `books.attributes`: filtro `?format=`, campi `attributes.*` in `/query`, SQL in `/sql`.
+- Sapere cosa cambia in PostgreSQL (`jsonb`) e in un database a documenti (MongoDB).
+
+## Teoria
+
+La tabella `books` ha colonne "normali" (`title`, `price`, `author_id`…) e una colonna `attributes` che contiene **testo JSON**:
+
+```json
+{"format": "brossura", "cover": "morbida", "awards": [], "dimensions_cm": {"w": 15, "h": 19}, "ebook": false}
+```
+
+Perché non fare una colonna per ogni attributo? Perché gli attributi sono **eterogenei e mutevoli**: i libri di informatica hanno `edition`, i romanzi no; domani arriva `audio_minutes`. Una colonna JSON accoglie tutto senza `ALTER TABLE`. Il prezzo: niente vincolo di tipo per chiave, query più lente se non indicizzate, e la tentazione di metterci dentro anche ciò che dovrebbe essere una colonna (o una tabella) vera.
+
+Regola pratica: **colonna normale** per ciò su cui filtri, ordini, fai join o vincoli (prezzo, autore, stato); **colonna JSON** per proprietà descrittive, variabili, "a coda lunga".
+
+### Le funzioni JSON di SQLite
+
+SQLite (dalla 3.38 sempre inclusa) offre:
+
+| Funzione / operatore | Cosa fa |
+|---|---|
+| `json_extract(col, '$.a.b')` | estrae un valore per percorso; `$` è la radice |
+| `col ->> '$.a'` | come `json_extract`, ma restituisce sempre un valore SQL (testo/numero); `->` restituisce JSON |
+| `json_type(col, '$.a')` | il tipo JSON: `text`, `integer`, `real`, `true`, `false`, `null`, `array`, `object` |
+| `json_each(col, '$.arr')` | **tabella virtuale**: una riga per ogni elemento di un array (si mette nel `FROM`) |
+| `json_array_length`, `json_valid`, `json_object`, `json_group_array` | lunghezza, validità, costruzione di JSON da righe SQL |
+
+E il dettaglio che fa la differenza in produzione: puoi creare un **indice su un'espressione**, ad esempio `CREATE INDEX idx_format ON books(attributes ->> '$.format')`, così un filtro sul formato non scandisce tutta la tabella.
+
+## curl, spiegato
+
+L'endpoint `/api/v1/sql` accetta solo `SELECT` (capitolo 12 della Sezione 2 spiega come lo blinda). Il body è JSON con la query dentro: attenzione agli apici.
+
+<Curl cmd={`curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/sql \\
+  -H 'Content-Type: application/json' \\
+  -d '{"sql": "SELECT attributes ->> '"'"'$.format'"'"' AS format, COUNT(*) AS n, ROUND(AVG(price),2) AS avg_price FROM books GROUP BY 1 ORDER BY n DESC"}'`} spiega={[
+  ['-X POST', "metodo POST: la query viaggia nel body, non nell'URL"],
+  ["-H 'Content-Type: application/json'", "dichiara che il body è JSON; senza, il server risponde 422"],
+  ["-d '{\"sql\": \"…\"}'", "<em>data</em>: il body. Tra apici singoli, così le doppie virgolette del JSON restano intatte"],
+  ["'\"'\"'", "il trucco per un apice singolo dentro una stringa a apici singoli: chiudi <code>'</code>, apri una stringa a doppi apici con dentro <code>'</code>, riapri <code>'</code>. Alternativa: metti il body in un file e usa <code>-d @query.json</code>"],
+  ["attributes ->> '$.format'", "estrae il campo <code>format</code> dal JSON della colonna, come valore SQL"],
+  ['GROUP BY 1', "raggruppa per la prima colonna del SELECT (il formato)"],
+]} />
+
+```json
+{"columns":["format","n","avg_price"],"rows":[["tascabile",30,18.76],["brossura",26,22.49],["rilegato",24,18.52]],"row_count":3,"truncated":false,"elapsed_ms":1.19}
+```
+
+Con il body in un file si evita l'acrobazia degli apici:
+
+<Curl cmd={`cat > q.json <<'FINE'
+{"sql": "SELECT b.title, j.value AS award FROM books b, json_each(b.attributes, '$.awards') j LIMIT 4"}
+FINE
+curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/sql -H 'Content-Type: application/json' -d @q.json`} spiega={[
+  ["cat > q.json <<'FINE' … FINE", "<em>heredoc</em>: scrive nel file tutto ciò che sta tra i due <code>FINE</code>, senza interpretare <code>$</code> (grazie agli apici in <code>'FINE'</code>)"],
+  ['-d @q.json', "la <code>@</code> dice a curl di leggere il body dal file"],
+  ["json_each(b.attributes, '$.awards') j", "per ogni libro, una riga per ogni premio nell'array: è un JOIN implicito tra la tabella e i suoi elementi JSON"],
+]} />
+
+```json
+{"columns":["title","award"],"rows":[["Il cervello e Matera","Campiello"],["Il cervello e Matera","Bancarella"],["Contro Sestri","Campiello"],["Contro Sestri","Strega"]],"row_count":4,"truncated":false,"elapsed_ms":1.03}
+```
+
+Altre tre query da provare (stesso schema di chiamata):
+
+```sql
+-- tipi dei valori JSON
+SELECT json_type(attributes, '$.awards') AS t_awards, json_type(attributes, '$.ebook') AS t_ebook,
+       json_array_length(attributes, '$.awards') AS n FROM books WHERE id = 1;
+-- → [["array","false",0]]
+
+-- JSON dentro un'altra colonna JSON: l'indirizzo degli ordini
+SELECT json_extract(shipping_address, '$.city') AS city, COUNT(*) AS n
+FROM orders GROUP BY 1 ORDER BY n DESC LIMIT 3;
+-- → [["Torino",25],["Padova",22],["Firenze",19]]
+
+-- costruire JSON da righe relazionali: il libro con i suoi tag (tabella N-N) in un documento
+SELECT json_object('id', id, 'title', title,
+  'tags', (SELECT json_group_array(t.name) FROM tags t JOIN book_tags bt ON bt.tag_id = t.id WHERE bt.book_id = b.id)) AS doc
+FROM books b WHERE id IN (1, 2);
+-- → {"id":2,"title":"TypeScript e Ferrara","tags":["bestseller","tascabile"]}
+```
+
+L'ultima è interessante: è **esattamente ciò che fa un'API** quando risponde `GET /books/2?expand=tags`. Il JSON che ricevi dall'API nasce così, da un join tradotto in documento.
+
+## Python e TypeScript
+
+Le tre porte sulla colonna JSON, dalla più semplice alla più potente.
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+import httpx
+BASE = "https://corso-api-json.giuseppebosi.com/api/v1"
+
+# 1) filtro dedicato: l'API traduce ?format= in json_extract(attributes,'$.format') = ?
+r = httpx.get(f"{BASE}/books", params={"format": "rilegato", "limit": 2}).json()
+print(r["meta"]["total"], [b["title"] for b in r["items"]])
+# 24 ['Andromeda e il Novecento', 'Le mura di Norcia']
+
+# 2) query strutturata: campi "attributes.x" ammessi nel where e nel select
+q = {"from": "books", "select": ["id", "title", "price", "attributes.format"],
+     "where": {"and": [{"field": "attributes.format", "op": "eq", "value": "tascabile"},
+                       {"field": "price", "op": "lt", "value": 10}]},
+     "order_by": ["price"], "limit": 3}
+r = httpx.post(f"{BASE}/query", json=q).json()
+print(r["meta"]["sql"])      # guarda come è stato tradotto
+for b in r["items"]:
+    print(b["price"], b["title"], b["attributes.format"])
+
+# 3) SQL libero (solo SELECT): json_each per "esplodere" un array
+sql = "SELECT b.title, j.value AS award FROM books b, json_each(b.attributes, '$.awards') j LIMIT 4"
+r = httpx.post(f"{BASE}/sql", json={"sql": sql}).json()
+print(r["columns"], r["rows"])
+```
+Output (estratto):
+```
+SELECT id, title, price, json_extract(attributes, '$.format') AS "attributes.format" FROM books WHERE (json_extract(attributes, '$.format') = ? AND price < ?) ORDER BY price ASC LIMIT 3 OFFSET 0
+7.13 La cucina di Ferrara tascabile
+7.25 Contro Aosta tascabile
+7.91 Il valore di Aosta tascabile
+['title', 'award'] [['Il cervello e Matera', 'Campiello'], …]
+```
+Vuoi provare le stesse funzioni **in locale**, senza server? `sqlite3` è nella libreria standard:
+```python
+import sqlite3, json
+con = sqlite3.connect(":memory:")
+con.execute("CREATE TABLE b(title, attributes)")
+con.execute("INSERT INTO b VALUES (?, ?)", ("Prova", json.dumps({"format": "ebook", "awards": ["Strega"]})))
+con.execute("CREATE INDEX i ON b(attributes ->> '$.format')")   # indice su espressione
+print(con.execute("SELECT title, attributes ->> '$.format', json_array_length(attributes, '$.awards') FROM b").fetchall())
+# [('Prova', 'ebook', 1)]
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types jsondb.ts
+const BASE = "https://corso-api-json.giuseppebosi.com/api/v1";
+const post = async (path: string, body: unknown) =>
+  (await fetch(`${BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
+
+// 1) filtro dedicato
+const r1 = await (await fetch(`${BASE}/books?format=rilegato&limit=2`)).json();
+console.log(r1.meta.total, r1.items.map((b: any) => b.title));
+
+// 2) query strutturata con campi attributes.*
+const r2 = await post("/query", {
+  from: "books", select: ["id", "title", "price", "attributes.format"],
+  where: { and: [{ field: "attributes.format", op: "eq", value: "tascabile" }, { field: "price", op: "lt", value: 10 }] },
+  order_by: ["price"], limit: 3,
+});
+console.log(r2.meta.sql);
+for (const b of r2.items) console.log(b.price, b.title, b["attributes.format"]);
+
+// 3) SQL (solo SELECT)
+const r3 = await post("/sql", { sql: "SELECT b.title, j.value AS award FROM books b, json_each(b.attributes, '$.awards') j LIMIT 4" });
+console.log(r3.columns, r3.rows);
+```
+In locale, Node 22 include un driver SQLite sperimentale: `import { DatabaseSync } from "node:sqlite"` (flag `--experimental-sqlite`), con le stesse funzioni `json_*` perché è lo stesso motore. In alternativa `npm install better-sqlite3`.
+</TabItem>
+</Tabs>
+
+<Aside type="note" title="PostgreSQL e MongoDB, in breve">
+**PostgreSQL** ha due tipi: `json` (testo conservato com'è) e **`jsonb`** (binario, normalizzato, indicizzabile). Operatori: `->` (JSON), `->>` (testo), `@>` (contenimento: `attributes @> '{"format":"tascabile"}'`), `?` (esiste la chiave). Un **indice GIN** su una colonna `jsonb` accelera `@>` e `?` su qualunque chiave, senza dover scegliere prima. È il motivo per cui "Postgres + jsonb" copre molti casi in cui prima si sceglieva un database a documenti.
+**MongoDB** ribalta il modello: il documento JSON (BSON) *è* la riga; le query sono JSON (`{ "attributes.format": "tascabile", price: { $lt: 10 } }`) e le relazioni si esprimono annidando o con `$lookup`.
+</Aside>
+
+## Prova subito
+
+<Prova path="/api/v1/books?format=tascabile&limit=3" titolo="filtro sulla colonna JSON tramite parametro dedicato" />
+
+<Prova method="POST" path="/api/v1/query" body={{ "from": "books", "select": ["title", "attributes.format", "attributes.ebook"], "where": { "field": "attributes.ebook", "op": "eq", "value": true }, "limit": 5 }} titolo="campi JSON nel select e nel where" />
+
+<Prova method="POST" path="/api/v1/sql" body={{ "sql": "SELECT attributes ->> '$.cover' AS cover, COUNT(*) AS n FROM books GROUP BY 1" }} titolo="SQL: raggruppa per un campo JSON" />
+
+## Esercizio
+
+1. Con `/sql`: quanti libri hanno **almeno un premio**? (suggerimento: `json_array_length(attributes, '$.awards') > 0`).
+2. Con `/sql`: l'altezza media (`dimensions_cm.h`) dei libri per formato.
+3. Con `/query`: i libri in formato `rilegato` **oppure** con `ebook = true`, ordinati per prezzo decrescente, primi 5.
+
+<details>
+<summary>Soluzione</summary>
+
+```sql
+SELECT COUNT(*) FROM books WHERE json_array_length(attributes, '$.awards') > 0;   -- 29
+SELECT attributes ->> '$.format' AS f, ROUND(AVG(attributes ->> '$.dimensions_cm.h'), 1) AS h FROM books GROUP BY 1;
+-- brossura 20.7 · rilegato 21.1 · tascabile 21.1
+```
+```json
+{"from": "books", "where": {"or": [{"field": "attributes.format", "op": "eq", "value": "rilegato"},
+                                    {"field": "attributes.ebook", "op": "eq", "value": true}]},
+ "order_by": ["-price"], "limit": 5}
+```
+(prezzi 34.36, 33.45, 32.71, 31.27, 31.04). Nota nella seconda query: `->>` restituisce un numero quando il valore JSON è numerico, quindi `AVG` funziona senza cast.
+</details>
+
+## Errori comuni
+
+- **`json_extract(col, 'format')`** senza `$.`: il percorso deve iniziare dalla radice `$`.
+- **Confrontare `->` con una stringa**: `->` restituisce JSON (con le virgolette!), `->>` il valore. Per i `WHERE` usa quasi sempre `->>`.
+- **Booleani**: in SQLite `true`/`false` JSON diventano `1`/`0` con `->>` (lo vedi nel widget sopra: `attributes.ebook: 1`); `json_type` invece dice `true`/`false`.
+- **Tutto in JSON**: se filtri e fai join su una chiave ogni giorno, promuovila a colonna (o tabella) vera.
+- **Dimenticare l'indice su espressione** quando la colonna JSON cresce: la query resta corretta ma scandisce tutta la tabella.
+
+## In sintesi
+
+Una colonna JSON dà flessibilità dove lo schema è variabile; SQLite e PostgreSQL sanno estrarre, filtrare, esplodere e indicizzare quel JSON, e un'API buona espone quelle capacità in modo controllato. Nel prossimo capitolo: JSON sul filo HTTP, header, body ed errori.

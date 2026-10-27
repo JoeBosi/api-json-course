@@ -1,0 +1,92 @@
+---
+/**
+ * Widget "Prova subito": esegue una richiesta verso l'API del corso dalla pagina e mostra la
+ * risposta. In produzione l'API è sulla stessa origine; in sviluppo usa PUBLIC_API_BASE.
+ * Props: method, path (relativo, es. /api/v1/books), body (oggetto o stringa JSON),
+ * sandbox (true = serve il token, che il widget prende dal pannello Sandbox / localStorage),
+ * headers (oggetto), titolo.
+ */
+interface Props { method?: string; path: string; body?: unknown; sandbox?: boolean; headers?: Record<string, string>; titolo?: string; }
+const { method = 'GET', path, body, sandbox = false, headers = {}, titolo } = Astro.props;
+const base = import.meta.env.PUBLIC_API_BASE ?? '';
+const corpo = body === undefined ? '' : typeof body === 'string' ? body : JSON.stringify(body, null, 2);
+---
+<prova-api class="prova not-content" data-method={method} data-path={path} data-base={base} data-sandbox={sandbox ? '1' : ''} data-headers={JSON.stringify(headers)}>
+  <div class="prova__testa">
+    <span class="prova__metodo" data-m={method}>{method}</span>
+    <span class="prova__url">{base}{path}</span>
+    {titolo && <span>— {titolo}</span>}
+  </div>
+  <div class="prova__corpo">
+    {corpo && <label>Body (JSON, puoi modificarlo)<textarea data-body>{corpo}</textarea></label>}
+    <div class="prova__azioni">
+      <button class="primario" data-esegui>▶ Esegui</button>
+      <button data-curl>Copia come curl</button>
+      <span class="prova__stato" data-stato></span>
+    </div>
+    {sandbox && <div class="prova__avviso" data-avviso>Serve un token sandbox: crealo dal pannello <a href="/db-api/06-sandbox-e-scritture/#la-tua-sandbox">La tua sandbox</a> (viene salvato nel browser).</div>}
+    <details data-dettagli hidden><summary>Header della risposta</summary><pre data-headers></pre></details>
+    <pre data-risposta hidden></pre>
+  </div>
+</prova-api>
+
+<script>
+  const CHIAVE = 'corso-api-json.sandbox';
+  class ProvaApi extends HTMLElement {
+    connectedCallback() {
+      this.querySelector('[data-esegui]')!.addEventListener('click', () => this.esegui());
+      this.querySelector('[data-curl]')!.addEventListener('click', () => this.copiaCurl());
+      this.aggiornaAvviso();
+      window.addEventListener('storage', () => this.aggiornaAvviso());
+      window.addEventListener('corso:sandbox', () => this.aggiornaAvviso());
+    }
+    get token() { try { return localStorage.getItem(CHIAVE) ?? ''; } catch { return ''; } }
+    get url() { return (this.dataset.base ?? '') + this.dataset.path; }
+    get body() { return (this.querySelector('[data-body]') as HTMLTextAreaElement | null)?.value ?? ''; }
+    get headers(): Record<string, string> {
+      const h: Record<string, string> = { ...JSON.parse(this.dataset.headers || '{}') };
+      if (this.body) h['Content-Type'] = 'application/json';
+      if (this.dataset.sandbox && this.token) h['Authorization'] = 'Bearer ' + this.token;
+      return h;
+    }
+    aggiornaAvviso() {
+      const a = this.querySelector('[data-avviso]') as HTMLElement | null;
+      if (a) a.hidden = !!this.token;
+    }
+    async esegui() {
+      const stato = this.querySelector('[data-stato]') as HTMLElement;
+      const out = this.querySelector('[data-risposta]') as HTMLElement;
+      const hdr = this.querySelector('[data-headers]') as HTMLElement;
+      const det = this.querySelector('[data-dettagli]') as HTMLElement;
+      stato.textContent = '…'; out.hidden = false; out.textContent = '';
+      const t0 = performance.now();
+      try {
+        const r = await fetch(this.url, { method: this.dataset.method, headers: this.headers, body: this.body || undefined });
+        const ms = Math.round(performance.now() - t0);
+        const testo = await r.text();
+        let mostrato = testo;
+        try { mostrato = JSON.stringify(JSON.parse(testo), null, 2); } catch {}
+        stato.innerHTML = `<b data-ok="${r.ok}">${r.status} ${r.statusText}</b> · ${ms} ms · ${testo.length} byte`;
+        out.textContent = mostrato || '(risposta vuota)';
+        const interessanti = ['content-type', 'etag', 'cache-control', 'location', 'x-request-id', 'retry-after', 'content-disposition'];
+        hdr.textContent = interessanti.filter(k => r.headers.get(k)).map(k => `${k}: ${r.headers.get(k)}`).join('\n') || '(nessuno esposto)';
+        det.hidden = false;
+        window.dispatchEvent(new CustomEvent('corso:prova-eseguita', { detail: { path: this.dataset.path, status: r.status } }));
+      } catch (e) {
+        stato.innerHTML = `<b data-ok="false">errore di rete</b>`;
+        out.textContent = String(e) + '\n\nSe stai leggendo il corso in locale, avvia l\'API (cd api && uv run fastapi dev app/main.py --port 8795).';
+      }
+    }
+    copiaCurl() {
+      const parti = [`curl -i -X ${this.dataset.method}`];
+      for (const [k, v] of Object.entries(this.headers)) parti.push(`-H '${k}: ${k === 'Authorization' ? 'Bearer <TOKEN>' : v}'`);
+      if (this.body) parti.push(`-d '${this.body.replace(/\n\s*/g, ' ').replace(/'/g, "'\\''")}'`);
+      const origine = this.dataset.base || location.origin;
+      parti.push(`'${origine}${this.dataset.path}'`);
+      const cmd = parti.join(' \\\n  ');
+      navigator.clipboard?.writeText(cmd);
+      const b = this.querySelector('[data-curl]') as HTMLElement; b.textContent = 'Copiato!'; setTimeout(() => (b.textContent = 'Copia come curl'), 1500);
+    }
+  }
+  if (!customElements.get('prova-api')) customElements.define('prova-api', ProvaApi);
+</script>

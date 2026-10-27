@@ -1,0 +1,126 @@
+---
+title: "Glossario"
+description: "I termini del corso, in ordine alfabetico, con un rimando al capitolo in cui compaiono."
+---
+
+**ACID** — le quattro garanzie di una transazione: Atomicity (tutto o niente), Consistency (le regole restano vere), Isolation (le transazioni non si disturbano), Durability (ciò che è confermato non si perde). *DB-API 13*
+
+**Aggregazione** — un numero calcolato su molte righe: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, di solito con `GROUP BY`. *DB-API 10*
+
+**Allow-list** — elenco chiuso di valori ammessi (tabelle, colonne, ordinamenti); tutto ciò che non c'è è rifiutato. *DB-API 11, 15*
+
+**API (HTTP)** — un insieme di endpoint con cui un programma legge e modifica dati via HTTP. *DB-API 1*
+
+**Array** — in JSON, lista ordinata tra `[ ]`. *JSON 2*
+
+**Authorizer** — funzione registrata in SQLite che approva o nega ogni azione di una query; usata da `/sql` per permettere solo le letture. *DB-API 12*
+
+**Backoff esponenziale** — attese crescenti tra i tentativi (0,5 s, 1 s, 2 s…), spesso con **jitter** casuale. *DB-API 16*
+
+**Bearer token** — credenziale inviata come `Authorization: Bearer <token>`: chi la "porta" è autorizzato. *DB-API 8*
+
+**Body** — il contenuto di una richiesta o risposta HTTP (per noi quasi sempre JSON). *DB-API 1*
+
+**Cache-Control** — header che dice chi può conservare una risposta e per quanto (`public, max-age=60`, `no-store`). *DB-API 14*
+
+**CHECK** — vincolo dello schema su un valore (`rating BETWEEN 1 AND 5`). *DB-API 13*
+
+**Chiave esterna (foreign key, FK)** — colonna che contiene la chiave primaria di un'altra tabella (`books.author_id → authors.id`); esprime una relazione. *DB-API 5, 12*
+
+**Chiave primaria (primary key, PK)** — colonna (o gruppo di colonne) che identifica univocamente una riga; di solito `id`. *DB-API 5, 12*
+
+**Chiave composta** — chiave primaria formata da più colonne, come `book_tags(book_id, tag_id)`. *Riferimento dataset*
+
+**Content-Type** — header che dichiara il formato del body (`application/json; charset=utf-8`). *JSON 14*
+
+**CORS** — regola del browser per cui un sito può leggere risposte di un'altra origine solo se il server lo permette con `Access-Control-Allow-Origin`. *DB-API 15*
+
+**CTE (Common Table Expression)** — sottoquery con un nome, `WITH nome AS (…)`; la variante `RECURSIVE` percorre gerarchie. *DB-API 12*
+
+**Cursore (paginazione a)** — invece di `page=3`, un segnalibro opaco che indica "da dove continuare"; stabile anche se i dati cambiano. *DB-API 4*
+
+**Deserializzazione (parsing)** — da testo JSON a oggetti del linguaggio (`json.loads`, `JSON.parse`). *JSON 3*
+
+**Endpoint** — un percorso dell'API che risponde a uno o più metodi (`GET /books/{id}`). *DB-API 1*
+
+**ETag** — impronta di una risposta; rimandata con `If-None-Match` permette un `304 Not Modified`. *DB-API 14*
+
+**Expand** — parametro con cui l'API "segue" una chiave esterna e include la riga collegata (`?expand=items.book`). *DB-API 5*
+
+**Full-text search** — ricerca per parole con ranking, non per uguaglianza (`/search`, FTS5). *DB-API 9*
+
+**GROUP BY / HAVING** — raggruppa le righe per valore; `HAVING` filtra i gruppi dopo l'aggregazione. *DB-API 10, 12*
+
+**Header** — coppie nome/valore che accompagnano richiesta e risposta (`Authorization`, `Content-Type`, `ETag`…). *DB-API 1*
+
+**Idempotenza** — proprietà di una richiesta che, ripetuta, ha lo stesso effetto di una sola: `GET`, `PUT`, `DELETE` sì; `POST` no. *DB-API 16*
+
+**Indice** — struttura che permette al database di trovare righe senza leggere tutta la tabella (`SEARCH … USING INDEX` vs `SCAN`). *DB-API 12*
+
+**JOIN** — operazione SQL che affianca righe di due tabelle secondo una condizione, di solito FK = PK. `LEFT JOIN` tiene anche le righe senza corrispondenza. *DB-API 12*
+
+**JSON** — formato di testo per dati strutturati: oggetti, array, stringhe, numeri, booleani, `null`. *JSON 1*
+
+**JSON Lines (NDJSON)** — un documento JSON per riga; adatto a stream e file grandi. *JSON 11*
+
+**JSON Schema** — linguaggio (in JSON) per descrivere e validare la forma di un documento JSON. *JSON 9*
+
+**Keep-alive** — riuso della stessa connessione TCP/TLS per più richieste. *DB-API 14*
+
+**Macchina a stati** — insieme di stati e transizioni ammesse (ordine: pending → paid → shipped → delivered). *DB-API 13*
+
+**Metodo HTTP** — il verbo della richiesta: `GET` (leggi), `POST` (crea), `PUT` (sostituisci), `PATCH` (modifica), `DELETE` (elimina), `OPTIONS` (preflight). *DB-API 1*
+
+**Null** — assenza di valore, in JSON `null`, in SQL `NULL` (si testa con `IS NULL`). *JSON 2*
+
+**Oggetto** — in JSON, insieme di coppie chiave/valore tra `{ }`. *JSON 2*
+
+**ON DELETE CASCADE** — regola di una FK: cancellando la riga puntata si cancellano anche le righe che la puntano. *DB-API 13*
+
+**OpenAPI** — descrizione formale (JSON/YAML) di un'API: endpoint, parametri, schemi; alimenta Swagger UI. *JSON 9, Riferimento*
+
+**Paginazione** — restituire i risultati a blocchi (`page`/`limit` o cursore) con `meta` e `links`. *DB-API 4*
+
+**Parametro (SQL)** — segnaposto `?` sostituito dal motore con un valore, che non può diventare codice. *DB-API 11, 15*
+
+**Preflight** — richiesta `OPTIONS` che il browser manda prima di una richiesta cross-origin "non semplice". *DB-API 15*
+
+**Query string** — la parte dell'URL dopo `?`: parametri `chiave=valore` separati da `&`. *DB-API 4*
+
+**Rate limit** — limite di richieste per intervallo di tempo; superato, `429` con `Retry-After`. *DB-API 14*
+
+**Reverse proxy** — server (qui Caddy) davanti all'applicazione: termina HTTPS, comprime, aggiunge header, instrada. *DB-API 14, 15*
+
+**REST** — stile di API basato su risorse identificate da URL e manipolate con i metodi HTTP. *DB-API 1*
+
+**Retry-After** — header che indica dopo quanti secondi riprovare (con `429` o `503`). *DB-API 14*
+
+**Risorsa** — "cosa" esposta dall'API (un libro, un ordine), con un URL. **Risorsa annidata**: `/authors/{id}/books`. *DB-API 5*
+
+**Sandbox** — copia privata del database legata a un token, dove puoi scrivere senza toccare i dati pubblici. *DB-API 6*
+
+**Schema (database)** — la definizione di tabelle, colonne, chiavi e vincoli; `GET /schema` la espone. *DB-API 5*
+
+**Serializzazione** — da oggetti del linguaggio a testo JSON (`json.dumps`, `JSON.stringify`). *JSON 3*
+
+**Sottoquery** — una `SELECT` dentro un'altra (`WHERE price > (SELECT AVG(price) …)`). *DB-API 12*
+
+**SQL injection** — attacco in cui un valore utente viene interpretato come codice SQL; si previene con parametri, allow-list e privilegi minimi. *DB-API 15*
+
+**Status code** — numero a tre cifre della risposta: `2xx` ok, `3xx` redirect/non modificato, `4xx` errore del client, `5xx` errore del server. *DB-API 7*
+
+**Timeout** — tempo massimo che il client aspetta prima di rinunciare. *DB-API 16*
+
+**Token** — stringa segreta che identifica chi chiama (qui: la sandbox). *DB-API 8*
+
+**Transazione** — gruppo di scritture eseguite tutte o nessuna (`COMMIT`/`ROLLBACK`). *DB-API 13*
+
+**UNIQUE** — vincolo per cui un valore non può ripetersi in una colonna (`customers.email`); violato → `409`. *DB-API 13*
+
+**Validazione** — controllo di tipi, limiti e forma dell'input prima di usarlo; in caso di errore `422` con i dettagli. *DB-API 7, 15*
+
+**Vista (view)** — query salvata nel database, interrogabile come una tabella (`book_stats`). *DB-API 12*
+
+**X-Request-Id** — identificativo univoco di una richiesta, utile nei log per rintracciarla. *DB-API 16*
+
+**422 / 409** — `422 Unprocessable Content`: un valore non è accettabile; `409 Conflict`: lo stato attuale dei dati impedisce l'operazione. *DB-API 7, 13*

@@ -1,0 +1,152 @@
+---
+title: "1. Cos'è JSON"
+description: "Cos'è JSON, da dove viene, dove lo incontri, come si legge un documento JSON vero preso da un'API."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+
+## Obiettivi
+
+- Sapere cos'è JSON e perché è diventato il formato di scambio universale.
+- Riconoscere a colpo d'occhio le parti di un documento JSON: oggetti, array, valori.
+- Leggere un JSON reale restituito da un'API e capire "cosa c'è dentro".
+
+## Teoria
+
+**JSON** (JavaScript Object Notation) è un formato di **testo** per rappresentare dati strutturati. Nasce nel 2001 da Douglas Crockford come sottoinsieme della sintassi degli oggetti JavaScript, ed è standardizzato in [RFC 8259](https://www.rfc-editor.org/rfc/rfc8259) ed ECMA-404. Tre proprietà lo hanno reso onnipresente:
+
+1. **È testo** (UTF-8): lo leggi in un editor, lo mandi in una richiesta HTTP, lo salvi in un file, lo metti in una colonna di database.
+2. **È indipendente dal linguaggio**: ogni linguaggio ha una libreria per trasformare i propri oggetti in JSON (*serializzare*) e viceversa (*deserializzare* o *parsare*).
+3. **È semplice**: sei tipi di valore e due strutture. Tutto qui.
+
+Un documento JSON è composto da:
+
+| Elemento | Aspetto | Esempio |
+|---|---|---|
+| **Oggetto** | coppie `"chiave": valore` tra graffe | `{"id": 1, "title": "Oltre Trieste"}` |
+| **Array** | lista ordinata tra quadre | `["novità", "premio"]` |
+| **Stringa** | testo tra doppi apici | `"Elena Marchetti"` |
+| **Numero** | intero o decimale, notazione scientifica ammessa | `18.71`, `2002`, `1e3` |
+| **Booleano** | `true` o `false` | `true` |
+| **null** | assenza di valore | `null` |
+
+Oggetti e array si **annidano** senza limiti: un oggetto può contenere array di oggetti che contengono oggetti… È così che JSON rappresenta strutture complesse come un ordine con le sue righe, o un libro con il suo autore.
+
+<Aside type="tip" title="Una regola mentale">
+Se vedi `{` stai entrando in un **oggetto** (chiavi → valori). Se vedi `[` stai entrando in una **lista**. Tutto il resto è un valore semplice.
+</Aside>
+
+## Dove lo incontri
+
+- **API HTTP**: quasi ogni servizio web risponde in JSON (`Content-Type: application/json`).
+- **File di configurazione**: `package.json`, `tsconfig.json`, `settings.json` di VS Code.
+- **Database**: PostgreSQL (`jsonb`), SQLite (funzioni `json_*`), MongoDB (documenti BSON, un JSON binario).
+- **Log e dati**: una riga JSON per evento (*JSON Lines*, lo vedremo nel capitolo 11).
+
+## Un JSON vero, letto insieme
+
+Chiediamo al server di prova il libro con `id` 1. Prima con curl, spiegato opzione per opzione:
+
+<Curl cmd={`curl -s https://corso-api-json.giuseppebosi.com/api/v1/books/1`} spiega={[
+  ['curl', 'esegue una richiesta HTTP e stampa la risposta sul terminale'],
+  ['-s', '<em>silent</em>: nasconde la barra di avanzamento, così vedi solo la risposta'],
+  ['https://corso-api-json.giuseppebosi.com', 'schema (<code>https</code>) e host del server'],
+  ['/api/v1/books/1', 'il percorso: risorsa <code>books</code>, elemento con id <code>1</code>. Nessun metodo indicato = <code>GET</code>'],
+]} />
+
+Risposta (riformattata con gli a capo per leggerla; sul filo viaggia su una riga sola):
+
+```json
+{
+  "id": 1,
+  "title": "Il silenzio di Ustica",
+  "isbn": "978-88-81482-001-1",
+  "author_id": 19,
+  "category_id": 2,
+  "price": 18.71,
+  "pages": 120,
+  "published_year": 2002,
+  "language": "it",
+  "in_stock": true,
+  "attributes": {
+    "format": "brossura",
+    "cover": "morbida",
+    "awards": [],
+    "dimensions_cm": { "w": 15, "h": 19 },
+    "ebook": false
+  },
+  "created_at": "2025-06-01T00:00:00Z",
+  "reviews_count": 0,
+  "avg_rating": null
+}
+```
+
+Leggiamolo con la regola mentale:
+
+- La graffa iniziale: è un **oggetto**, il libro.
+- `"id": 1` → numero. `"title": "…"` → stringa. `"in_stock": true` → booleano. `"avg_rating": null` → nessun valore (il libro non ha ancora recensioni).
+- `"attributes": { … }` → un oggetto **dentro** l'oggetto: contiene a sua volta `"awards": []` (un array vuoto) e `"dimensions_cm": {"w": 15, "h": 19}` (un altro oggetto).
+- `"created_at": "2025-06-01T00:00:00Z"` → attenzione: è una **stringa**. JSON non ha un tipo "data": ci torneremo nel capitolo 3.
+- `"author_id": 19` → un numero che *rimanda* a un'altra risorsa (l'autore 19). È il modo in cui JSON, e i database, esprimono le relazioni: lo approfondirai nella Sezione 2.
+
+Ora eseguilo tu, dal browser:
+
+<Prova path="/api/v1/books/1" titolo="il libro con id 1" />
+
+## Lo stesso in Python e TypeScript
+
+Nei prossimi capitoli entreremo nel dettaglio; intanto ecco quanto poco serve per scaricare quel JSON e trasformarlo in un oggetto del linguaggio.
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx
+import httpx
+
+r = httpx.get("https://corso-api-json.giuseppebosi.com/api/v1/books/1")
+libro = r.json()          # da testo JSON a dict Python
+print(type(libro))        # <class 'dict'>
+print(libro["title"])     # Il silenzio di Ustica
+print(libro["attributes"]["dimensions_cm"]["h"])   # 19
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types libro.ts
+const r = await fetch("https://corso-api-json.giuseppebosi.com/api/v1/books/1");
+const libro = await r.json();   // da testo JSON a oggetto JavaScript
+console.log(typeof libro);       // object
+console.log(libro.title);        // Il silenzio di Ustica
+console.log(libro.attributes.dimensions_cm.h);   // 19
+```
+</TabItem>
+</Tabs>
+
+## Esercizio
+
+Scarica `https://corso-api-json.giuseppebosi.com/api/v1/orders/1` (con curl o col pulsante qui sotto) e rispondi:
+
+1. Quanti livelli di annidamento ha `shipping_address`?
+2. `items` è un oggetto o un array? Quanti elementi ha?
+3. Quale campo lega ogni riga dell'ordine a un libro?
+
+<Prova path="/api/v1/orders/1" titolo="l'ordine 1 con le sue righe" />
+
+<details>
+<summary>Soluzione</summary>
+
+1. Uno: `shipping_address` è un oggetto con quattro stringhe (`street`, `city`, `zip`, `country`).
+2. Un **array** (`[`…`]`) di oggetti: una riga per ogni libro ordinato (il numero dipende dall'ordine: nell'ordine 1 è 1).
+3. `book_id`: è una **chiave esterna** verso `books.id`. Nella Sezione 2, capitolo 5, imparerai a "seguirla" con `?expand=items.book`.
+</details>
+
+## Errori comuni
+
+- **Confondere JSON con un oggetto JavaScript.** JSON è *testo*; l'oggetto è ciò che ottieni dopo il parsing. `'{"a":1}'` (stringa) ≠ `{a: 1}` (oggetto).
+- **Apici singoli.** `{'a': 1}` non è JSON valido: le stringhe e le chiavi vanno tra **doppi** apici.
+- **Virgola finale.** `{"a": 1,}` non è valido. Molti editor la tollerano, i parser no.
+
+## In sintesi
+
+JSON è testo, con sei tipi e due strutture annidabili. Un'API lo restituisce, il tuo linguaggio lo trasforma in oggetti nativi, e viceversa. Nel prossimo capitolo la sintassi completa, regola per regola.

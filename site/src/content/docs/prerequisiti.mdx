@@ -1,0 +1,64 @@
+---
+title: Prerequisiti e setup
+description: Cosa installare per eseguire gli esempi in Python e TypeScript, e come verificare che tutto funzioni.
+---
+import { Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+import Curl from '../../components/Curl.astro';
+
+Per **leggere** il corso e usare i pulsanti "Esegui" non serve nulla. Per **eseguire gli esempi sul tuo computer** ti servono:
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+<Steps>
+1. Python **3.12 o superiore**: `python3 --version`.
+2. Un ambiente virtuale con le librerie usate nel corso:
+   ```bash
+   python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+   pip install httpx pydantic jsonschema ijson orjson
+   ```
+3. Verifica:
+   ```bash
+   python3 -c "import httpx; print(httpx.get('https://corso-api-json.giuseppebosi.com/api/v1/health').json())"
+   ```
+   Atteso: `{'status': 'ok', 'public_dataset': True}`.
+</Steps>
+</TabItem>
+<TabItem label="TypeScript">
+<Steps>
+1. Node.js **22 o superiore**: `node --version`. Node 22 esegue i file `.ts` direttamente (`node --experimental-strip-types file.ts`; da Node 23 il flag non serve più) e ha `fetch` integrato.
+2. Una cartella di lavoro con le librerie usate nel corso:
+   ```bash
+   mkdir corso-json && cd corso-json && npm init -y
+   npm install zod ajv
+   npm install -D typescript @types/node
+   ```
+3. Verifica (salva come `check.ts`):
+   ```ts
+   const r = await fetch("https://corso-api-json.giuseppebosi.com/api/v1/health");
+   console.log(await r.json());
+   ```
+   ```bash
+   node --experimental-strip-types check.ts
+   ```
+   Atteso: `{ status: 'ok', public_dataset: true }`.
+</Steps>
+</TabItem>
+</Tabs>
+
+## curl
+
+`curl` è preinstallato su macOS, Linux e Windows 10/11 (`curl --version`). È lo strumento con cui, in ogni capitolo, guarderemo la richiesta "nuda":
+
+<Curl cmd={`curl -s https://corso-api-json.giuseppebosi.com/api/v1/health`} spiega={[
+  ['curl', 'il programma: fa una richiesta HTTP e stampa la risposta'],
+  ['-s', '<em>silent</em>: niente barra di avanzamento, solo il corpo della risposta'],
+  ['https://…/health', "l'URL: schema <code>https</code>, host, percorso <code>/api/v1/health</code>. Senza altre opzioni curl fa una <code>GET</code>"],
+]} />
+
+Atteso: `{"status":"ok","public_dataset":true}`. Il [capitolo 2 della Sezione 2](/db-api/02-curl-dalla-a-alla-z/) è dedicato interamente a curl.
+
+## Se qualcosa non va
+
+- **`fetch is not defined`** → Node più vecchio di 18: aggiorna.
+- **Errore SSL/certificato** → orologio del computer sbagliato o proxy aziendale.
+- **`429 Too Many Requests`** → hai superato il limite per minuto: aspetta qualche secondo.

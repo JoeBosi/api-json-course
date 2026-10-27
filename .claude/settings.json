@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch",
+      "Bash(npx -y skills@latest:*)",
+      "Bash(npx skills:*)",
+      "Bash(./bootstrap.sh:*)",
+      "Bash(cd api && uv run pytest:*)",
+      "Bash(cd site && npm run build:*)",
+      "Bash(curl -s http://127.0.0.1:8795/*)",
+      "Bash(curl -s https://corso-api-json.giuseppebosi.com/*)"
+    ],
+    "deny": ["Read(./.env)", "Read(./**/.env)"]
+  }
+}

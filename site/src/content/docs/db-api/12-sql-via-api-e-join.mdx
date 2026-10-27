@@ -1,0 +1,328 @@
+---
+title: "12. SQL via API e JOIN"
+description: "POST /sql: SELECT in sola lettura su un database vero. JOIN su 2, 3 e 4 tabelle seguendo chiavi primarie ed esterne, GROUP BY, sottoquery, CTE, viste, EXPLAIN QUERY PLAN e cosa succede se provi a scrivere."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+
+## Obiettivi
+
+- Scrivere `SELECT` con **JOIN** che attraversano più tabelle seguendo le chiavi primarie (PK) ed esterne (FK).
+- Usare `GROUP BY`/`HAVING`, sottoquery, `WITH` (CTE), viste e funzioni JSON di SQLite.
+- Leggere un `EXPLAIN QUERY PLAN` e capire quando un indice viene usato.
+- Sapere cosa **non** puoi fare (`DELETE`, `DROP`, `PRAGMA`, `ATTACH`) e come il server lo impedisce.
+
+## Teoria
+
+Un'API che accetta SQL è rara in produzione (di solito è un pannello interno o uno strumento di analisi), ma è il modo più diretto per **capire le relazioni tra tabelle**. Il server di prova espone `POST /api/v1/sql` con regole precise:
+
+- solo istruzioni di **lettura** (`SELECT`, `WITH … SELECT`): il resto è rifiutato prima di toccare i dati;
+- massimo **200 righe** (`truncated: true` se ce ne sarebbero di più) e **2 secondi** di esecuzione;
+- parametri con `?` e lista `params`, come in `/query`;
+- con il token sandbox interroghi la **tua** copia, senza token il dataset pubblico.
+
+### Chiavi primarie ed esterne
+
+Ogni tabella ha una **chiave primaria** (PK), la colonna `id`, che identifica una riga. Una **chiave esterna** (FK) è una colonna che contiene la PK di un'altra tabella: `books.author_id` "punta" ad `authors.id`. `GET /api/v1/schema` le elenca tutte:
+
+```text
+books        PK id   FK author_id → authors.id,  category_id → categories.id
+categories   PK id   FK parent_id → categories.id           (gerarchia: una tabella che punta a sé stessa)
+orders       PK id   FK customer_id → customers.id
+order_items  PK id   FK order_id → orders.id,  book_id → books.id   (tabella ponte: N-N tra ordini e libri)
+reviews      PK id   FK book_id → books.id,  customer_id → customers.id
+book_tags    PK (book_id, tag_id)   FK verso books e tags         (chiave primaria composta)
+```
+
+Un **JOIN** è l'operazione che segue una FK: `JOIN authors a ON a.id = b.author_id` mette accanto a ogni libro la riga dell'autore corrispondente. Con più JOIN in fila attraversi la catena: ordine → righe d'ordine → libro → autore.
+
+| Tipo | Cosa restituisce |
+|---|---|
+| `JOIN` (inner) | solo le righe che hanno una corrispondenza in entrambe le tabelle |
+| `LEFT JOIN` | tutte le righe della tabella a sinistra, con `NULL` dove manca la corrispondenza (es. autori senza libri) |
+
+## curl, spiegato opzione per opzione
+
+### Due tabelle: libri con il nome dell'autore
+
+<Curl cmd={`curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/sql \\
+  -H 'Content-Type: application/json' \\
+  -d '{"sql": "SELECT b.title, a.name AS author FROM books b JOIN authors a ON a.id = b.author_id ORDER BY b.id LIMIT 3"}'`} spiega={[
+  ['-X POST … /sql', "l'SQL viaggia nel body di una POST (come per <code>/query</code>)"],
+  ["-d '{\"sql\": \"…\"}'", 'un oggetto JSON con la chiave <code>sql</code>; dentro la stringa i doppi apici SQL vanno evitati (usa alias e apici singoli SQL solo tramite <code>params</code>)'],
+  ['FROM books b', '<code>b</code> è un <em>alias</em>: abbrevia il nome della tabella nel resto della query'],
+  ['JOIN authors a ON a.id = b.author_id', 'la condizione di JOIN: PK di <code>authors</code> uguale alla FK di <code>books</code>'],
+  ['a.name AS author', "rinomina la colonna nell'output"],
+]} />
+
+```json
+{ "columns": ["title", "author"],
+  "rows": [["Il silenzio di Ustica", "Laura Esposito"], ["TypeScript e Ferrara", "Beatrice Colombo"], ["Il cervello e Matera", "Lorenzo Vitali"]],
+  "row_count": 3, "truncated": false, "elapsed_ms": 1.77 }
+```
+
+Il formato è **colonnare**: `columns` una volta sola, `rows` come liste. Più compatto di una lista di oggetti (e ti costringe a ragionare sulla posizione delle colonne).
+
+### Tre tabelle con aggregazione: quanti libri per categoria e autore
+
+<Curl cmd={`curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/sql -H 'Content-Type: application/json' -d @- <<'EOF'
+{"sql": "SELECT c.name AS category, a.name AS author, COUNT(*) AS books
+         FROM books b
+         JOIN authors a ON a.id = b.author_id
+         JOIN categories c ON c.id = b.category_id
+         GROUP BY c.id, a.id
+         HAVING books >= 2
+         ORDER BY books DESC, category
+         LIMIT 5"}
+EOF`} spiega={[
+  ['-d @-', 'legge il body dallo standard input (<code>@</code> = da file, <code>-</code> = stdin): comodo per SQL lungo'],
+  ["<<'EOF' … EOF", 'un <em>here-document</em> della shell: tutto ciò che sta tra le due righe <code>EOF</code> è lo stdin. Gli apici intorno al primo EOF impediscono alla shell di interpretare <code>$</code> e simili'],
+  ['GROUP BY c.id, a.id', 'un gruppo per ogni coppia categoria-autore'],
+  ['HAVING books >= 2', 'filtra i gruppi dopo il conteggio (con WHERE non potresti: <code>books</code> non esiste ancora)'],
+]} />
+
+```json
+{ "columns": ["category", "author", "books"],
+  "rows": [["Saggistica", "Matteo Rinaldi", 4], ["Ragazzi", "Nadia Karim", 3], ["Cucina", "Elena Marchetti", 2],
+           ["Informatica", "Riccardo Fontana", 2], ["Ragazzi", "Samuel Okafor", 2]],
+  "row_count": 5, "truncated": false, "elapsed_ms": 5.62 }
+```
+
+### Quattro tabelle: un ordine ricostruito per intero
+
+`orders` → `customers` (chi ha ordinato), `orders` → `order_items` (cosa), `order_items` → `books` (il titolo):
+
+```sql
+SELECT o.id AS order_id, cu.name AS customer, b.title, oi.quantity, oi.unit_price
+FROM orders o
+JOIN customers cu   ON cu.id = o.customer_id
+JOIN order_items oi ON oi.order_id = o.id
+JOIN books b        ON b.id = oi.book_id
+WHERE o.id = 1
+```
+
+```json
+{ "columns": ["order_id", "customer", "title", "quantity", "unit_price"],
+  "rows": [[1, "Giovanni Costa", "Quello che resta di Montecarvo", 1, 12.04]], "row_count": 1, … }
+```
+
+È esattamente ciò che `GET /orders/1?expand=items.book,customer` fa per te (capitolo 5): l'API "espande" le FK con dei JOIN. Ora sai cosa c'è sotto.
+
+### Sottoquery, CTE e viste
+
+Libri più cari della media (sottoquery scalare nel `WHERE`):
+
+```sql
+SELECT title, price FROM books
+WHERE price > (SELECT AVG(price) FROM books)
+ORDER BY price DESC LIMIT 3
+-- → [["Quello che resta di Sestri", 34.49], ["Ustica e il Novecento", 34.36], ["La cucina di Ustica", 33.49]]
+```
+
+Una **CTE** (`WITH nome AS (…)`) dà un nome a una sottoquery e rende leggibili le catene di JOIN. Copie vendute per libro, escludendo gli ordini annullati (nota il parametro `?`):
+
+```json
+{ "sql": "WITH vendite AS (
+            SELECT oi.book_id, SUM(oi.quantity) AS copie
+            FROM order_items oi JOIN orders o ON o.id = oi.order_id
+            WHERE o.status != ? GROUP BY oi.book_id)
+          SELECT b.title, a.name AS author, v.copie
+          FROM vendite v JOIN books b ON b.id = v.book_id JOIN authors a ON a.id = b.author_id
+          ORDER BY v.copie DESC LIMIT 5",
+  "params": ["cancelled"] }
+```
+
+```json
+{ "columns": ["title", "author", "copie"],
+  "rows": [["Quello che resta di Montecarvo", "Pietro Galli", 15], ["Quello che resta di Sestri", "Elena Marchetti", 14],
+           ["La casa sul Porto Vecchio", "Lorenzo Vitali", 14], ["Contro Volterra", "Sofia Lindqvist", 13], ["Numeri e Trieste", "Giulia Serra", 12]], … }
+```
+
+Una **vista** è una query salvata nel database che si interroga come una tabella. `book_stats` calcola recensioni e voto medio per libro:
+
+```sql
+SELECT b.title, s.reviews_count, s.avg_rating
+FROM book_stats s JOIN books b ON b.id = s.book_id
+WHERE s.reviews_count >= 5 ORDER BY s.avg_rating DESC LIMIT 3
+-- → [["Ritorno a Montecarvo", 6, 4.83], ["Nebbia su Aosta", 6, 4.83], ["Numeri e Trieste", 5, 4.8]]
+```
+
+La gerarchia delle categorie (`parent_id` che punta alla stessa tabella) si attraversa con un **self-join**:
+
+```sql
+SELECT p.name AS parent, c.name AS child, COUNT(b.id) AS books
+FROM categories c
+JOIN categories p ON p.id = c.parent_id
+LEFT JOIN books b ON b.category_id = c.id
+GROUP BY c.id ORDER BY parent, child
+-- → [["Narrativa", "Fantascienza", 6], ["Narrativa", "Gialli e thriller", 4], ["Narrativa", "Romanzi storici", 7],
+--    ["Saggistica", "Informatica", 7], ["Saggistica", "Scienza e tecnologia", 6], ["Saggistica", "Storia", 7]]
+```
+
+<Aside type="note" title="E per profondità arbitraria?">
+Con più di due livelli serve una CTE **ricorsiva** (`WITH RECURSIVE`), e su `/sql` **è permessa**: l'autorizzatore del server la consente perché resta una lettura. Provaci: riscrivi l'albero delle categorie con `WITH RECURSIVE` invece dei due join. È anche ciò che fa il server internamente: `GET /categories/narrativa/books` ti dà i libri di Narrativa **e di tutte le sottocategorie** grazie a una CTE ricorsiva. Nel capitolo 5 l'hai già usata senza saperlo.
+</Aside>
+
+### Dentro la colonna JSON
+
+SQLite sa leggere dentro `attributes` (capitolo 13 della Sezione 1):
+
+```sql
+SELECT title, attributes ->> '$.format' AS format, json_extract(attributes, '$.dimensions_cm.h') AS h
+FROM books WHERE json_extract(attributes, '$.ebook') = 1 LIMIT 3
+-- → [["TypeScript e Ferrara", "tascabile", 23], ["Contro Sestri", "brossura", 21], ["Andromeda e il Novecento", "rilegato", 19]]
+```
+
+### `EXPLAIN QUERY PLAN`: l'indice c'è o no?
+
+Con `"explain": true` il server antepone `EXPLAIN QUERY PLAN` e ti mostra come SQLite intende eseguire la query:
+
+```json
+{ "sql": "SELECT * FROM books WHERE author_id = 3", "explain": true }
+→ "rows": [[3, 0, 0, "SEARCH books USING INDEX idx_books_author (author_id=?)"]]
+
+{ "sql": "SELECT * FROM books WHERE pages > 300", "explain": true }
+→ "rows": [[2, 0, 0, "SCAN books"]]
+```
+
+`SEARCH … USING INDEX` = salta dritto alle righe giuste. `SCAN` = legge tutta la tabella. Su 80 righe non cambia nulla; su 80 milioni è la differenza tra millisecondi e minuti. Le FK sono quasi sempre indicizzate proprio perché i JOIN le usano di continuo.
+
+### Cosa succede se provi a scrivere
+
+<Curl cmd={`for sql in "DELETE FROM books" "DROP TABLE books" "PRAGMA table_info(books)" "ATTACH DATABASE 'x.db' AS x" "SELECT * FROM sqlite_master"; do
+  curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/sql -H 'Content-Type: application/json' -d "{\\"sql\\": \\"$sql\\"}"; echo
+done`} spiega={[
+  ['for sql in "…" "…"; do … done', 'un ciclo della shell: la variabile <code>sql</code> assume a turno ogni stringa'],
+  ['-d "{\\"sql\\": \\"$sql\\"}"', 'qui il body è tra doppi apici perché deve espandere <code>$sql</code>; i doppi apici interni vanno protetti con la barra'],
+  ['; echo', 'stampa un a capo dopo ogni risposta'],
+]} />
+
+```json
+{"error":{"code":"sql_not_allowed","message":"Solo SELECT: questa istruzione non è permessa","details":{"sqlite":"not authorized"}}}
+{"error":{"code":"sql_not_allowed","message":"Solo SELECT: questa istruzione non è permessa","details":{"sqlite":"not authorized"}}}
+{"error":{"code":"sql_not_allowed","message":"Solo SELECT: questa istruzione non è permessa","details":{"sqlite":"not authorized"}}}
+{"error":{"code":"sql_not_allowed","message":"Solo SELECT: questa istruzione non è permessa","details":{"sqlite":"not authorized"}}}
+{"error":{"code":"sql_error","message":"SQL non valido","details":{"sqlite":"access to sqlite_master.type is prohibited"}}}
+```
+
+Nessuna di queste è bloccata da un'espressione regolare sul testo (facile da aggirare): il server registra in SQLite un **authorizer**, una funzione che il motore chiama per *ogni* azione della query (leggere una colonna, chiamare una funzione, cancellare, allegare un file) e che risponde "permesso" solo a `SELECT`, lettura e funzioni. In più la connessione è aperta in modalità `mode=ro` (sola lettura) e un contatore interrompe la query dopo 2 secondi:
+
+```json
+{ "sql": "SELECT COUNT(*) FROM order_items a, order_items b, order_items c, order_items d" }
+→ {"error":{"code":"sql_timeout","message":"Query interrotta: superati 2 secondi"}}
+```
+
+(un prodotto cartesiano di 305⁴ ≈ 8,6 miliardi di righe: la difesa serve anche contro gli errori, non solo contro i malintenzionati).
+
+## Python e TypeScript
+
+Una funzione `sql()` riusabile che trasforma il formato colonnare in una lista di dizionari/oggetti, con parametri:
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx   →   python3 sql.py
+import httpx
+
+BASE = "https://corso-api-json.giuseppebosi.com/api/v1"
+
+
+def sql(query: str, *params, explain: bool = False) -> list[dict]:
+    r = httpx.post(f"{BASE}/sql", json={"sql": query, "params": list(params), "explain": explain}, timeout=10)
+    if r.status_code != 200:
+        err = r.json()["error"]
+        raise RuntimeError(f"{err['code']}: {err['message']} {err.get('details', '')}")
+    d = r.json()
+    if d["truncated"]:
+        print("attenzione: risultato troncato a", d["row_count"], "righe")
+    return [dict(zip(d["columns"], riga)) for riga in d["rows"]]
+
+
+# gli ordini di un cliente con i titoli: 4 tabelle
+righe = sql("""
+    SELECT o.id AS ordine, o.status, b.title, oi.quantity
+    FROM customers cu
+    JOIN orders o       ON o.customer_id = cu.id
+    JOIN order_items oi ON oi.order_id = o.id
+    JOIN books b        ON b.id = oi.book_id
+    WHERE cu.id = ? ORDER BY o.id""", 3)
+for r in righe:
+    print(r)
+
+print(sql("SELECT * FROM orders WHERE customer_id = ?", 3, explain=True))
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types sql.ts
+const BASE = "https://corso-api-json.giuseppebosi.com/api/v1";
+
+type Risultato = { columns: string[]; rows: unknown[][]; row_count: number; truncated: boolean; elapsed_ms: number };
+
+async function sql(query: string, params: unknown[] = [], explain = false): Promise<Record<string, unknown>[]> {
+  const r = await fetch(`${BASE}/sql`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sql: query, params, explain }),
+  });
+  if (!r.ok) {
+    const { error } = await r.json();
+    throw new Error(`${error.code}: ${error.message} ${JSON.stringify(error.details ?? "")}`);
+  }
+  const d = (await r.json()) as Risultato;
+  if (d.truncated) console.warn("attenzione: risultato troncato a", d.row_count, "righe");
+  return d.rows.map((riga) => Object.fromEntries(d.columns.map((c, i) => [c, riga[i]])));
+}
+
+// gli ordini di un cliente con i titoli: 4 tabelle
+const righe = await sql(`
+  SELECT o.id AS ordine, o.status, b.title, oi.quantity
+  FROM customers cu
+  JOIN orders o       ON o.customer_id = cu.id
+  JOIN order_items oi ON oi.order_id = o.id
+  JOIN books b        ON b.id = oi.book_id
+  WHERE cu.id = ? ORDER BY o.id`, [3]);
+console.table(righe);
+
+console.log(await sql("SELECT * FROM orders WHERE customer_id = ?", [3], true));
+```
+</TabItem>
+</Tabs>
+
+## Prova subito
+
+<Prova method="POST" path="/api/v1/sql" titolo="libri con autore e categoria (3 tabelle)" body={{ sql: "SELECT b.id, b.title, a.name AS author, c.name AS category, b.price FROM books b JOIN authors a ON a.id = b.author_id JOIN categories c ON c.id = b.category_id ORDER BY b.price DESC LIMIT 5" }} />
+
+<Prova method="POST" path="/api/v1/sql" titolo="clienti per incasso (LEFT JOIN + GROUP BY)" body={{ sql: "SELECT cu.name, cu.city, COUNT(o.id) AS orders, ROUND(COALESCE(SUM(o.total), 0), 2) AS spent FROM customers cu LEFT JOIN orders o ON o.customer_id = cu.id AND o.status != 'cancelled' GROUP BY cu.id ORDER BY spent DESC LIMIT 5" }} />
+
+<Prova method="POST" path="/api/v1/sql" titolo="piano di esecuzione di un JOIN" body={{ sql: "SELECT b.title FROM books b JOIN authors a ON a.id = b.author_id WHERE a.country = 'NO'", explain: true }} />
+
+<Prova method="POST" path="/api/v1/sql" titolo="e se provo a cancellare?" body={{ sql: "DELETE FROM reviews WHERE rating = 1" }} />
+
+## Esercizio
+
+1. Per ogni **tag**, quanti libri lo hanno? (tabelle `tags`, `book_tags`, `books`; attenzione alla PK composta di `book_tags`).
+2. I 3 libri con più recensioni **e** il nome del loro autore (usa la vista `book_stats`).
+3. Gli autori che non hanno **mai** venduto una copia (serve un `LEFT JOIN` e un `IS NULL`… oppure `NOT IN` con una sottoquery).
+4. Guarda con `explain: true` la query `SELECT * FROM books WHERE title LIKE '%Trieste%'`: usa un indice? Perché?
+
+<details>
+<summary>Soluzione</summary>
+
+1. `SELECT t.name, COUNT(bt.book_id) AS books FROM tags t LEFT JOIN book_tags bt ON bt.tag_id = t.id GROUP BY t.id ORDER BY books DESC`
+2. `SELECT b.title, a.name, s.reviews_count FROM book_stats s JOIN books b ON b.id = s.book_id JOIN authors a ON a.id = b.author_id ORDER BY s.reviews_count DESC LIMIT 3`
+3. `SELECT a.name FROM authors a WHERE a.id NOT IN (SELECT b.author_id FROM books b JOIN order_items oi ON oi.book_id = b.id)` — nel dataset di partenza il risultato è vuoto: tutti hanno venduto almeno una copia.
+4. `SCAN books`: un `LIKE` che inizia con `%` non può usare un indice B-tree (dovrebbe cercare "in mezzo" alle stringhe). Per questo esiste la ricerca full-text del capitolo 9.
+</details>
+
+## Errori comuni
+
+- **JOIN senza `ON`** (o con la condizione sbagliata): ottieni il prodotto cartesiano, righe moltiplicate e conteggi gonfiati.
+- **`COUNT(*)` dopo un `LEFT JOIN`**: conta anche le righe con `NULL`. Usa `COUNT(colonna_della_tabella_destra)`.
+- **Colonne ambigue**: `SELECT id FROM books b JOIN authors a …` → errore "ambiguous column": prefissa sempre con l'alias.
+- **Dimenticare `LIMIT`**: il server tronca a 200 righe e ti avvisa con `truncated: true`, ma è meglio chiedere solo ciò che serve.
+- **Aspettarsi di scrivere**: `/sql` è di sola lettura per progetto, non per caso.
+
+## In sintesi
+
+Con `/sql` hai seguito le chiavi esterne a mano: JOIN a due, tre e quattro tabelle, aggregazioni per gruppo, CTE, viste, funzioni JSON e il piano di esecuzione. Hai anche visto come un server espone SQL senza esporre il database: authorizer, connessione read-only, limiti di righe e tempo. Nel prossimo capitolo torni a **scrivere**, e scopri cosa garantisce che i dati restino coerenti: transazioni e vincoli di integrità.

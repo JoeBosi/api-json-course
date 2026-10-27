@@ -1,0 +1,35 @@
+INFO:     Started server process [935784]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8796 (Press CTRL+C to quit)
+INFO:     127.0.0.1:38464 - "GET /api/v1/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38468 - "POST /api/v1/sql HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38472 - "POST /api/v1/sql HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38486 - "POST /api/v1/sql HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38502 - "POST /api/v1/sql HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38504 - "POST /api/v1/sql HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38518 - "POST /api/v1/sql HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38532 - "POST /api/v1/sql HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38534 - "GET /api/v1/books?limit=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38546 - "GET /api/v1/books/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38562 - "GET /api/v1/export/books.ndjson HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38564 - "GET /api/v1/export/books.ndjson HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38570 - "HEAD /api/v1/export/books.ndjson HTTP/1.1" 405 Method Not Allowed
+INFO:     127.0.0.1:38586 - "POST /api/v1/sandbox HTTP/1.1" 201 Created
+INFO:     127.0.0.1:38594 - "POST /api/v1/books HTTP/1.1" 201 Created
+INFO:     127.0.0.1:38596 - "POST /api/v1/books HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:38598 - "GET /api/v1/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38606 - "GET /api/v1/books/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38616 - "GET /api/openapi.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38626 - "GET /api/v1/orders/1?expand=items.book,customer HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38638 - "GET /api/v1/books?limit=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38640 - "GET /api/v1/export/books.ndjson HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38652 - "GET /api/v1/books?limit=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38664 - "GET /api/v1/export/books.ndjson HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38672 - "GET /api/v1/books/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38676 - "GET /api/v1/export/books.ndjson HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38686 - "GET /api/v1/export/books.ndjson HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [935784]

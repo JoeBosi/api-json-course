@@ -1,0 +1,74 @@
+---
+title: Crediti e licenze
+description: Chi ha scritto il corso, con che licenza si può riusare, quali strumenti usa e perché i marchi citati non c'entrano nulla con noi.
+---
+
+## Chi
+
+Corso scritto da **Giuseppe Bosi**. Per segnalazioni, errori o domande:
+[info@giuseppebosi.com](mailto:info@giuseppebosi.com). Le correzioni sono benvenute: un corso
+tecnico invecchia, e chi trova uno sbaglio fa un favore a tutti.
+
+La data di ultimo aggiornamento di ogni pagina è in fondo alla pagina stessa.
+
+## Come è stato scritto {#ia}
+
+I testi sono stati prodotti **con l'aiuto dell'intelligenza artificiale** e poi **riletti e
+verificati dall'autore**. Non è una formula di cortesia, è una cosa che conviene sapere:
+
+- gli **esempi non sono inventati**: ogni comando `curl`, ogni script Python e TypeScript e ogni
+  output mostrato sono stati eseguiti contro l'API del corso, e i numeri che leggi vengono da lì;
+- restano possibili errori, imprecisioni e parti invecchiate: se ne trovi, scrivi;
+- l'**audio** delle pagine è letto da una **voce sintetica** (sintesi vocale del tuo browser),
+  non da una persona.
+
+## Licenza {#licenza}
+
+- **Testi, spiegazioni, esercizi**: [Creative Commons Attribuzione 4.0 Internazionale
+  (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/deed.it). Puoi copiarli, modificarli e
+  usarli anche per scopi commerciali, **citando l'autore** e indicando se hai fatto modifiche.
+- **Codice**: tutti i frammenti di codice del corso, il server di prova e il codice del sito sono
+  rilasciati con licenza **MIT**: fanne quello che vuoi, tenendo la nota di copyright.
+- Il **dataset** della Libreria Aurora è inventato: nomi, email e ordini non appartengono a
+  nessuno. Anche quello è MIT.
+
+Il testo completo delle due licenze è nei file `LICENSE` (MIT, codice) e `LICENSE-CONTENUTI`
+(CC BY 4.0, testi) del progetto.
+
+## Strumenti usati
+
+| Strumento | A cosa serve qui | Licenza |
+|---|---|---|
+| [Astro](https://astro.build) + [Starlight](https://starlight.astro.build) | il sito e la sua struttura | MIT |
+| [Pagefind](https://pagefind.app) | la ricerca interna, senza servizi esterni | MIT |
+| [FastAPI](https://fastapi.tiangolo.com) e [Pydantic](https://docs.pydantic.dev) | il server di prova e la validazione | MIT |
+| [SQLite](https://sqlite.org) (con FTS5) | il database del dataset | pubblico dominio |
+| [slowapi](https://github.com/laurentS/slowapi) | il limite di richieste al minuto | MIT |
+| [Swagger UI](https://swagger.io/tools/swagger-ui/) | la pagina `/api/docs` (servita dal sito, non da una CDN) | Apache 2.0 |
+| [uvicorn](https://www.uvicorn.org) | esegue il server | BSD 3 clausole |
+
+## Marchi: non siamo affiliati a nessuno {#marchi}
+
+Il corso spiega strumenti altrui e li nomina per quello che sono. **Questo corso non è
+affiliato, sponsorizzato, approvato né verificato** da nessuna delle organizzazioni che li
+curano. Ogni nome e marchio appartiene al rispettivo titolare:
+
+- **Python** — Python Software Foundation
+- **JavaScript** — Oracle Corporation
+- **TypeScript** e **Visual Studio Code** — Microsoft Corporation
+- **Node.js** e **npm** — OpenJS Foundation
+- **curl** — Daniel Stenberg e il progetto curl
+- **jq** — il progetto jq
+- **SQLite** — SQLite Consortium
+- **FastAPI**, **Pydantic**, **Astro**, **Starlight**, **ajv**, **zod** — i rispettivi autori e progetti
+- **GitHub** — GitHub, Inc. (Microsoft)
+
+Le citazioni di nomi, comandi e messaggi d'errore servono a spiegare come funzionano quegli
+strumenti: è uso lecito a fini didattici e di riferimento.
+
+## Il server di prova
+
+`/api/v1` è un **server didattico**, non un servizio: i dati sono inventati, le copie private
+(sandbox) scadono dopo poche ore, c'è un limite di richieste al minuto e l'API resta **spenta
+quando nessuno la usa** (si accende da [Attiva l'API di prova](/api-attiva/)). Non va usato come
+backend di nient'altro, e può cambiare o sparire senza preavviso.

@@ -1,0 +1,65 @@
+---
+title: Privacy
+description: Cosa salva (poco) e cosa non salva (quasi tutto) questo sito. Nessun cookie, nessun analytics, nessuno script esterno.
+---
+
+In breve: **questo sito non ti profila, non ti traccia e non usa cookie.** Qui sotto c'è la
+versione precisa, perché "non usiamo cookie" detto senza spiegazioni non vuol dire niente.
+
+## Cookie: nessuno
+
+Il sito **non installa cookie**, né propri né di terzi, e non c'è nessun sistema di statistiche,
+analytics, pixel o tag. Per questo non vedi nessun banner: non c'è niente da accettare.
+
+## Cosa resta nel tuo browser
+
+Alcune comodità vengono salvate **nel tuo browser** (`localStorage`) e **non vengono mai inviate
+al server**. Nessuno, autore compreso, può leggerle:
+
+| Cosa | A che serve | Quando sparisce |
+|---|---|---|
+| preferenze di lettura audio (voce, velocità, se il lettore è disattivato, a che paragrafo eri) | riprendere l'ascolto come l'avevi lasciato | quando cancelli i dati del sito |
+| token della sandbox | far funzionare i widget «Prova» con la *tua* copia del database | quando cancelli i dati del sito, o quando la sandbox scade |
+| tema chiaro/scuro e lingua del codice scelta nelle schede | non doverli riscegliere ogni volta | quando cancelli i dati del sito |
+
+Sono dati tecnici necessari al funzionamento, non servono a riconoscerti e non seguono la tua
+navigazione altrove.
+
+## Cosa vede il server
+
+- **Il tuo indirizzo IP**, come qualunque server web, per il tempo necessario a risponderti e per
+  applicare il **limite di richieste al minuto** (serve a evitare che qualcuno sovraccarichi il
+  server di prova). Il conteggio sta in memoria e si azzera da sé.
+- Il **reverse proxy non tiene registri di accesso**: non c'è un archivio di chi ha visitato cosa.
+  Il servizio scrive solo messaggi tecnici nel diario di sistema del server, che restano sulla
+  macchina e non vengono analizzati.
+- Quello che scrivi nella **tua sandbox** (libri, ordini, clienti che crei negli esercizi) sta in
+  una copia privata del database identificata solo dal tuo token, e viene **cancellata** dopo
+  poche ore di inattività. Non metterci dati veri di nessuno: è una palestra.
+
+## Font, script e servizi esterni
+
+Nessuno. Caratteri, fogli di stile, JavaScript, ricerca interna e file audio sono tutti serviti da
+**questo** sito: aprendo una pagina del corso il tuo browser non contatta nessun altro dominio.
+Anche la documentazione interattiva `/api/docs` carica Swagger UI **da qui**, non da una CDN
+esterna.
+
+Le uniche connessioni altrove partono **se clicchi tu** un link esterno (per esempio alla
+documentazione di `jq` o a un RFC): da quel momento vale la privacy di quel sito.
+
+## Audio
+
+La lettura ad alta voce usa la **sintesi vocale del tuo browser** (Web Speech API): il testo viene
+pronunciato sul tuo dispositivo. Alcuni browser, per le voci "online", possono inviare il testo da
+leggere ai server del loro produttore: è una scelta del browser, non del sito, e riguarda il testo
+pubblico del corso. Se preferisci evitarlo, scegli una voce locale nel menù del lettore o spegni
+del tutto la lettura audio dal pulsante «Non mostrare più la lettura audio».
+
+## Diritti e contatti
+
+Non esiste un archivio di dati personali dei lettori, quindi non c'è nulla da consultare,
+correggere o cancellare: ti basta cancellare i dati del sito dal tuo browser. Per qualsiasi
+domanda: [info@giuseppebosi.com](mailto:info@giuseppebosi.com).
+
+Se questa pagina e il comportamento del sito non coincidono, vince il comportamento del sito ed è
+questa pagina a essere sbagliata: segnalalo.

@@ -1,0 +1,24 @@
+---
+/** Riattiva/disattiva la lettura audio su tutto il sito (preferenza nel browser). */
+---
+<lettura-impostazioni class="sandbox not-content">
+  <strong>Lettura audio</strong>
+  <p data-stato></p>
+  <button class="primario" data-toggle></button>
+</lettura-impostazioni>
+<script>
+  const CHIAVE = 'corso-api-json.lettura';
+  class LetturaImpostazioni extends HTMLElement {
+    connectedCallback() { this.render(); (this.querySelector('[data-toggle]') as HTMLElement).onclick = () => this.cambia(); }
+    get pref() { try { return JSON.parse(localStorage.getItem(CHIAVE) ?? '{}'); } catch { return {}; } }
+    cambia() { const p = this.pref; p.disattivo = !p.disattivo; try { localStorage.setItem(CHIAVE, JSON.stringify(p)); } catch {} this.render(); }
+    render() {
+      const off = !!this.pref.disattivo;
+      (this.querySelector('[data-stato]') as HTMLElement).textContent = off
+        ? 'Disattivata: nelle pagine non compare il pulsante 🔊 Ascolta.'
+        : 'Attiva: in ogni capitolo, sotto il titolo, c\'è il pulsante 🔊 Ascolta (non parte mai da solo).';
+      (this.querySelector('[data-toggle]') as HTMLElement).textContent = off ? 'Riattiva la lettura audio' : 'Disattiva la lettura audio';
+    }
+  }
+  if (!customElements.get('lettura-impostazioni')) customElements.define('lettura-impostazioni', LetturaImpostazioni);
+</script>

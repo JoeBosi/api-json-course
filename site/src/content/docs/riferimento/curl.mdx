@@ -1,0 +1,103 @@
+---
+title: "Cheatsheet curl"
+description: "Tutte le opzioni di curl usate nel corso, con un esempio ciascuna, più le variabili di write-out e i trucchi di shell (apici, variabili, here-document, pipe)."
+---
+
+`curl` fa una richiesta HTTP e stampa la risposta. Senza opzioni: metodo `GET`, body sullo standard output. Il [capitolo 2 della Sezione 2](/db-api/02-curl-dalla-a-alla-z/) lo spiega da zero; questa pagina è il promemoria.
+
+## Opzioni usate nel corso
+
+| Opzione | Significato | Esempio |
+|---|---|---|
+| `-s` | *silent*: niente barra di avanzamento | `curl -s URL` |
+| `-i` | *include*: stampa anche status e header della risposta | `curl -s -i URL` |
+| `-I` | solo gli header (richiesta `HEAD`): sulle pagine del sito, **non** sull'API (`/api/v1/*` risponde 405) | `curl -s -I URL` |
+| `-D -` | *dump-header*: header su stdout (con `-o /dev/null` per nascondere il body) | `curl -s -D - -o /dev/null URL` |
+| `-o FILE` | scrive il body in un file (`/dev/null` = butta via) | `curl -s -o libri.json URL` |
+| `-X METODO` | metodo HTTP (`POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`) | `curl -s -X DELETE URL` |
+| `-H 'Nome: valore'` | aggiunge un header (ripetibile) | `-H 'Content-Type: application/json'` |
+| `-H "Authorization: Bearer $TOKEN"` | il token: doppi apici perché la shell deve sostituire la variabile | |
+| `-d 'DATI'` | body della richiesta (implica `POST` se non c'è `-X`) | `-d '{"title": "x"}'` |
+| `-d @file.json` | body letto da un file | `-d @ordine.json` |
+| `-d @-` | body letto dallo standard input (con here-document o pipe) | `curl … -d @- <<'EOF' … EOF` |
+| `-G` | manda i `-d` come query string di una GET | `curl -G -d 'q=trieste' URL` |
+| `--data-urlencode 'k=v'` | come `-d` ma codifica spazi e caratteri speciali | `--data-urlencode 'q=porto vecchio'` |
+| `-w 'FORMATO'` | *write-out*: stampa variabili dopo la risposta | `-w '%{http_code}\n'` |
+| `--compressed` | chiede e decomprime gzip/zstd | |
+| `--connect-timeout N` / `--max-time N` | timeout di connessione / totale (secondi) | `--max-time 15` |
+| `--retry N` / `--retry-delay S` | ritenta su errori transitori | `--retry 3 --retry-delay 1` |
+| `-L` | segue i redirect (`3xx`) | `curl -sL URL` |
+| `-v` | *verbose*: mostra richiesta e risposta complete (handshake TLS incluso) | `curl -v URL 2>&1 \| less` |
+| `-u user:pass` | Basic auth (non usata dal server di prova) | |
+
+## Variabili di `-w` (write-out)
+
+| Variabile | Cosa stampa |
+|---|---|
+| `%{http_code}` | status code |
+| `%{size_download}` | byte del body ricevuti |
+| `%{time_total}` | tempo totale in secondi |
+| `%{time_connect}`, `%{time_appconnect}` | tempo per TCP, per TLS |
+| `%{num_retries}` | tentativi aggiuntivi fatti |
+| `%{http_version}` | versione HTTP negoziata |
+| `%{redirect_url}` | dove ti manderebbe un redirect |
+| `%header{nome}` | valore di un header della risposta (curl ≥ 7.84) |
+
+Esempio: `curl -s -o /dev/null -w 'status=%{http_code} byte=%{size_download} tempo=%{time_total}s\n' URL`.
+
+## Shell: i trucchi che compaiono negli esempi
+
+| Cosa | Perché |
+|---|---|
+| `'…'` intorno all'URL | `&` nella query string altrimenti manda il comando in background; `?` e `*` potrebbero espandersi |
+| `'…'` intorno al JSON | dentro apici singoli i doppi apici sono caratteri normali |
+| `"…$VAR…"` | la shell sostituisce `$VAR` solo tra doppi apici (o senza apici) |
+| `'"'"'` | un apice singolo dentro una stringa a apici singoli: chiudi, apri doppi, apice, chiudi doppi, riapri |
+| `\` a fine riga | continuazione: il comando prosegue sulla riga dopo (nessuno spazio dopo la barra) |
+| `TOKEN=$(comando)` | sostituzione di comando: l'output finisce nella variabile |
+| `cmd1 \| cmd2` | pipe: l'output del primo è l'input del secondo (`\| python3 -m json.tool`, `\| jq .`) |
+| `<<'EOF' … EOF` | here-document: testo multiriga sullo standard input; gli apici intorno a `EOF` bloccano l'espansione di `$` |
+| `for i in $(seq 1 10); do …; done` | ciclo |
+| `2>&1` | manda anche lo standard error nella pipe (utile con `-v`) |
+
+## Ricette pronte
+
+```bash
+BASE=https://corso-api-json.giuseppebosi.com/api/v1
+
+# token sandbox in una variabile
+TOKEN=$(curl -s -X POST $BASE/sandbox | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])')
+AUTH="Authorization: Bearer $TOKEN"
+
+# GET con query string, risposta formattata
+curl -s "$BASE/books?category=gialli&sort=-price&limit=5" | python3 -m json.tool
+
+# solo lo status
+curl -s -o /dev/null -w '%{http_code}\n' $BASE/books/9999
+
+# solo gli header
+curl -s -D - -o /dev/null $BASE/books/7
+
+# POST JSON con token
+curl -s -X POST $BASE/books -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"title": "Nuovo", "author_id": 1, "category_id": 2, "price": 9.9}'
+
+# PATCH, DELETE
+curl -s -X PATCH $BASE/books/81 -H "$AUTH" -H 'Content-Type: application/json' -d '{"price": 12}'
+curl -s -o /dev/null -w '%{http_code}\n' -X DELETE $BASE/books/81 -H "$AUTH"
+
+# SQL lungo da here-document
+curl -s -X POST $BASE/sql -H 'Content-Type: application/json' -d @- <<'EOF'
+{"sql": "SELECT a.name, COUNT(*) AS n FROM books b JOIN authors a ON a.id = b.author_id GROUP BY a.id ORDER BY n DESC LIMIT 3"}
+EOF
+
+# richiesta condizionale
+ETAG=$(curl -s -D - -o /dev/null $BASE/books/7 | grep -i '^etag' | cut -d' ' -f2 | tr -d '\r')
+curl -s -o /dev/null -w '%{http_code}\n' $BASE/books/7 -H "If-None-Match: $ETAG"     # 304
+
+# robusto: timeout e retry
+curl -s --connect-timeout 5 --max-time 15 --retry 3 --retry-delay 1 $BASE/health
+
+# pulizia
+curl -s -o /dev/null -w '%{http_code}\n' -X DELETE $BASE/sandbox -H "$AUTH"           # 204
+```

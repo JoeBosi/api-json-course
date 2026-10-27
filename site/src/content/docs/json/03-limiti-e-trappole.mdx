@@ -1,0 +1,225 @@
+---
+title: "3. Limiti e trappole"
+description: "Cosa JSON non sa rappresentare e come si aggira: commenti, date, precisione dei numeri, interi grandi, NaN, Unicode, chiavi duplicate, ordine, null vs assente, profondità."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+
+## Obiettivi
+
+- Sapere in anticipo dove JSON ti tradisce: sono sempre gli stessi otto punti.
+- Rappresentare date, importi in denaro e interi grandi senza perdere informazione.
+- Distinguere "campo assente" da "campo `null`", e capire quando conta.
+- Sapere cosa fanno **davvero** Python e JavaScript nei casi limite (non sempre la stessa cosa).
+
+## Teoria: le otto trappole
+
+### 1. Niente commenti
+
+JSON non ha commenti. `// note` o `/* … */` rendono il documento invalido. Se ti servono note in un file di configurazione, le alternative sono: una chiave convenzionale (`"_comment": "…"`), oppure un formato diverso (JSON5, JSONC di VS Code, YAML, TOML). I dati che viaggiano in un'API non hanno bisogno di commenti.
+
+### 2. Niente virgole finali
+
+`[1, 2, 3,]` è invalido. È l'errore più frequente quando si costruisce JSON "a mano" concatenando stringhe: **non farlo mai**, usa sempre la libreria (`json.dumps`, `JSON.stringify`).
+
+### 3. Niente date
+
+JSON non ha un tipo data. La convenzione universale è una **stringa ISO 8601** (RFC 3339): `"2024-11-27T00:00:00Z"`. La `Z` significa UTC; in alternativa un offset, `+02:00`. Chi legge deve *sapere* che quel campo è una data e convertirlo (capitoli 5 e 6). Evita i timestamp numerici (`1732665600`): sono ambigui (secondi? millisecondi?) e illeggibili.
+
+Nella nostra API ogni campo che finisce in `_at` è una data ISO in UTC:
+
+```json
+"created_at": "2024-11-27T00:00:00Z"
+```
+
+### 4. Numeri: precisione e dimensione
+
+JSON dice solo "è un numero". Chi lo legge decide come rappresentarlo, e qui nascono due problemi.
+
+**Decimali.** `0.1` in binario a virgola mobile (IEEE 754 double) non è esatto: `0.1 + 0.2` fa `0.30000000000000004` in tutti i linguaggi che usano i double, cioè JavaScript sempre e Python con `float`. Per il **denaro** questo è inaccettabile: o usi interi in centesimi (`1871` per 18,71 €), o decodifichi i decimali con un tipo esatto (`Decimal` in Python, capitolo 5). La nostra API usa `price: 18.71` per semplicità didattica; un'API di pagamenti userebbe centesimi o stringhe.
+
+**Interi grandi.** JavaScript rappresenta i numeri come double: gli interi sono esatti solo fino a **2⁵³ − 1 = 9 007 199 254 740 991** (`Number.MAX_SAFE_INTEGER`). Un id a 64 bit come `9007199254740993` viene *arrotondato* silenziosamente. Python invece ha interi a precisione arbitraria e lo legge esatto. Le API serie serializzano gli id grandi **come stringhe** proprio per questo (Twitter lo fa dal 2010: `id_str`).
+
+**NaN e Infinity** non esistono in JSON. `JSON.stringify(NaN)` produce `"null"`; Python `json.dumps(float('nan'))` produce `NaN`, che è JSON *invalido* (estensione di Python: si disattiva con `allow_nan=False`).
+
+### 5. Unicode ed escape
+
+JSON è UTF-8. `"caffè"` e `"caff\u00e8"` sono lo stesso valore. Python, per default, scrive la seconda forma (`ensure_ascii=True`): sicuro ma illeggibile e più lungo. JavaScript scrive la prima. Nessuno dei due è "sbagliato": è solo una scelta di serializzazione.
+
+### 6. Chiavi duplicate
+
+`{"dup": 1, "dup": 2}` è sintatticamente ammesso ma lo standard dice che il comportamento "è imprevedibile". In pratica Python e JavaScript tengono l'**ultimo** valore. Non farci mai affidamento; in Python puoi intercettarle con `object_pairs_hook` (capitolo 5).
+
+### 7. L'ordine delle chiavi
+
+Lo standard dice che gli oggetti sono **non ordinati**. Nella pratica Python (dal 3.7) e JavaScript preservano l'ordine di inserimento, e quasi tutti ci fanno affidamento. Regola pratica: non scrivere codice che dipende dall'ordine; se vuoi output stabile per confronti o hash, ordina esplicitamente (`sort_keys=True`).
+
+### 8. `null` non è "assente"
+
+Sono tre situazioni diverse, e un'API ben fatta le distingue:
+
+| Situazione | JSON | Significato tipico |
+|---|---|---|
+| chiave assente | `{}` | "non so / non applicabile / non modificare" (PATCH) |
+| chiave con `null` | `{"pages": null}` | "il valore è esplicitamente vuoto" |
+| chiave con valore vuoto | `{"awards": []}` | "c'è, ed è vuoto" |
+
+In `PATCH /api/v1/books/7` (Sezione 2, capitolo 6) `{"pages": null}` azzera il campo, mentre `{}` non tocca nulla. Anche `avg_rating: null` (libro senza recensioni) è diverso da `avg_rating: 0`.
+
+<Aside type="caution" title="Profondità e dimensione">
+Nessun limite nello standard, ma i parser sì: Python solleva `RecursionError` intorno a 1000 livelli, molti server rifiutano body sopra qualche MB. Se un documento ha più di ~10 livelli di annidamento, il problema è il modello dei dati, non il parser.
+</Aside>
+
+## curl, spiegato: mettiamo alla prova il server
+
+L'endpoint `/api/v1/echo` rimanda indietro ciò che riceve. Se il body **non è JSON valido**, lo restituisce come testo grezzo in `_raw`:
+
+<Curl cmd={`curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/echo \\
+  -H 'Content-Type: application/json' \\
+  -d '{"a": 1,}'`} spiega={[
+  ['-X POST', 'il metodo HTTP. Senza <code>-X</code>, curl fa GET (o POST se c&#39;è <code>-d</code>, ma dichiararlo è più chiaro)'],
+  ['\\ (a fine riga)', 'continua il comando sulla riga successiva: è sintassi della shell, non di curl'],
+  ["-H 'Content-Type: application/json'", 'aggiunge un header alla richiesta: dice al server che il body è JSON'],
+  ["-d '{\"a\": 1,}'", 'il <em>body</em> della richiesta. Gli apici singoli della shell proteggono i doppi apici del JSON'],
+]} />
+
+```json
+{"method":"POST","path":"/api/v1/echo","query":{},"headers":{…},"json":{"_raw":"{\"a\": 1,}","_note":"il body non è JSON valido"}}
+```
+
+Ora un intero oltre 2⁵³ e alcuni decimali:
+
+<Curl cmd={`curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/echo \\
+  -H 'Content-Type: application/json' \\
+  -d '{"n": 9007199254740993, "f": 0.1, "p": 18.71}'`} spiega={[
+  ['-d …', 'stesso schema: metodo, header, body. Il server è in Python: leggerà <code>n</code> esatto e lo rimanderà esatto'],
+]} />
+
+```json
+"json":{"n":9007199254740993,"f":0.1,"p":18.71}
+```
+
+Il server (Python) ha conservato `9007199254740993`. Ma se leggi questa risposta in **JavaScript**, `JSON.parse` te la restituisce come `9007199254740992`. Provalo qui sotto: il widget gira nel browser, cioè in JavaScript, e formatta la risposta con `JSON.stringify(JSON.parse(...))`. Guarda cosa succede all'ultima cifra di `n`:
+
+<Prova method="POST" path="/api/v1/echo" body={`{"n": 9007199254740993, "f": 0.1, "p": 18.71}`} titolo="echo: il browser arrotonda l'intero grande" />
+
+E le chiavi duplicate più l'Unicode:
+
+<Prova method="POST" path="/api/v1/echo" body={`{"s": "caffè 😀", "dup": 1, "dup": 2}`} titolo="echo: dup vince l'ultimo, l'Unicode passa intatto" />
+
+## Python e TypeScript: i casi limite, uno per uno
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# python3 trappole.py
+import json
+from decimal import Decimal
+from datetime import datetime, timezone
+
+# Interi grandi: esatti
+print(json.loads('{"n": 9007199254740993}'))          # {'n': 9007199254740993}
+
+# Decimali: float per default, Decimal se lo chiedi
+print(json.loads('{"p": 0.1}')["p"] + 0.2)                          # 0.30000000000000004
+print(json.loads('{"p": 0.1}', parse_float=Decimal)["p"] + Decimal("0.2"))   # 0.3
+
+# NaN: Python lo accetta e lo scrive (estensione non standard)
+print(json.dumps(float("nan")))                                     # NaN
+try:
+    json.dumps(float("nan"), allow_nan=False)
+except ValueError as e:
+    print("allow_nan=False ->", e)                                  # Out of range float values are not JSON compliant
+
+# Date: non esistono, si passa da stringhe ISO
+quando = datetime(2024, 11, 27, tzinfo=timezone.utc)
+testo = json.dumps({"created_at": quando.isoformat().replace("+00:00", "Z")})
+print(testo)                                                        # {"created_at": "2024-11-27T00:00:00Z"}
+print(datetime.fromisoformat(json.loads(testo)["created_at"]))      # 2024-11-27 00:00:00+00:00
+
+# Unicode: ensure_ascii
+print(json.dumps({"s": "caffè 😀"}))                      # {"s": "caff\u00e8 \ud83d\ude00"}
+print(json.dumps({"s": "caffè 😀"}, ensure_ascii=False))  # {"s": "caffè 😀"}
+
+# Chiavi duplicate: vince l'ultima
+print(json.loads('{"dup": 1, "dup": 2}'))                 # {'dup': 2}
+
+# null vs assente
+doc = json.loads('{"pages": null}')
+print("pages" in doc, doc["pages"], doc.get("isbn", "assente"))     # True None assente
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types trappole.ts
+
+// Interi grandi: arrotondati oltre 2^53
+console.log(JSON.parse('{"n": 9007199254740993}').n);        // 9007199254740992
+console.log(Number.MAX_SAFE_INTEGER);                        // 9007199254740991
+// BigInt: esatto, ma va serializzato come stringa (capitolo 6)
+console.log(BigInt("9007199254740993") + 1n);                // 9007199254740994n
+
+// Decimali: sempre double
+console.log(JSON.parse('{"p": 0.1}').p + 0.2);               // 0.30000000000000004
+console.log(Math.round((0.1 + 0.2) * 100) / 100);            // 0.3 (arrotondamento esplicito)
+
+// NaN e Infinity: stringify li trasforma in null, parse li rifiuta
+console.log(JSON.stringify({ x: NaN, y: Infinity }));        // {"x":null,"y":null}
+try { JSON.parse('{"x": NaN}'); } catch (e) { console.log((e as Error).message); }
+
+// Date: stringa ISO in uscita (toJSON), Date in entrata solo se lo fai tu
+const quando = new Date(Date.UTC(2024, 10, 27));
+const testo = JSON.stringify({ created_at: quando });
+console.log(testo);                                          // {"created_at":"2024-11-27T00:00:00.000Z"}
+console.log(new Date(JSON.parse(testo).created_at).getFullYear());   // 2024
+
+// Unicode: passa intatto
+console.log(JSON.stringify({ s: "caffè 😀" }));              // {"s":"caffè 😀"}
+
+// Chiavi duplicate: vince l'ultima
+console.log(JSON.parse('{"dup": 1, "dup": 2}'));             // { dup: 2 }
+
+// null vs assente vs undefined (undefined sparisce nello stringify!)
+console.log(JSON.stringify({ a: null, b: undefined }));      // {"a":null}
+const doc = JSON.parse('{"pages": null}');
+console.log("pages" in doc, doc.pages, "isbn" in doc);       // true null false
+```
+</TabItem>
+</Tabs>
+
+## Esercizio
+
+Progetta il JSON di una **fattura** con: numero progressivo, data di emissione, importo totale in euro (con centesimi esatti), un identificativo a 64 bit del cliente, e un campo "note" opzionale. Scrivi il documento e motiva ogni scelta di tipo. Poi mandalo a `/api/v1/echo` e controlla che torni identico.
+
+<details>
+<summary>Soluzione (una delle possibili)</summary>
+
+```json
+{
+  "number": 2026001,
+  "issued_at": "2026-09-18T09:30:00Z",
+  "total_cents": 187100,
+  "currency": "EUR",
+  "customer_id": "9007199254740993",
+  "notes": null
+}
+```
+
+- `issued_at`: stringa ISO 8601 in UTC, l'unica convenzione che tutti leggono.
+- `total_cents`: intero in centesimi + `currency`. Niente float per il denaro.
+- `customer_id`: **stringa**, così JavaScript non lo arrotonda.
+- `notes`: `null` per dire "non ci sono note" in modo esplicito; in un PATCH avresti invece omesso la chiave.
+</details>
+
+## Errori comuni
+
+- Costruire JSON concatenando stringhe → virgole finali, escape sbagliati. Usa sempre la libreria.
+- Passare importi come `float` e sommarli: `0.1 + 0.2 ≠ 0.3`.
+- Mandare id a 64 bit come numeri a client JavaScript.
+- Salvare date come `"27/11/2024"`: ambigue (11/27?) e non ordinabili. ISO 8601 si ordina alfabeticamente.
+- Fidarsi dell'ordine delle chiavi o dell'ultimo valore di una chiave duplicata.
+
+## In sintesi
+
+JSON è volutamente povero: niente commenti, date, precisione decimale, interi infiniti. Si convive con convenzioni (ISO 8601, centesimi, id come stringhe) e conoscendo il comportamento del *proprio* parser. Dal prossimo capitolo entriamo nel modulo `json` di Python.

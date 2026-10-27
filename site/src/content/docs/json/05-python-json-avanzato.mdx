@@ -1,0 +1,230 @@
+---
+title: "5. Python: json avanzato"
+description: "Estendere il modulo json: default e JSONEncoder per serializzare datetime, Decimal, set e dataclass; object_hook, object_pairs_hook e parse_float per decodificare in tipi ricchi; round-trip completo."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+
+## Obiettivi
+
+- Serializzare tipi che `json` non conosce (`datetime`, `Decimal`, `set`, dataclass) con `default=` o un `JSONEncoder`.
+- Decodificare in tipi ricchi: `object_hook` per riconoscere le date, `parse_float=Decimal` per i soldi, `object_pairs_hook` per intercettare chiavi duplicate.
+- Costruire un **round-trip** affidabile: oggetto → JSON → oggetto identico.
+
+## Teoria
+
+### In uscita: `default=` e `JSONEncoder`
+
+Quando `dumps` incontra un tipo che non sa serializzare, chiama la funzione passata in `default=` e serializza **ciò che restituisce**. È il meccanismo più semplice:
+
+```python
+def converti(o):
+    if isinstance(o, datetime):  return o.isoformat()
+    if isinstance(o, Decimal):   return str(o)        # o float(o), scegli consapevolmente
+    if isinstance(o, set):       return sorted(o)
+    if is_dataclass(o):          return asdict(o)
+    raise TypeError(f"Non so serializzare {type(o).__name__}")
+json.dumps(dato, default=converti)
+```
+
+L'alternativa è una sottoclasse di `json.JSONEncoder` con il metodo `default(self, o)` e `cls=MioEncoder`: stessa logica, comoda quando vuoi riusarla in più punti o incapsulare configurazione.
+
+<Aside type="caution" title="`Decimal` → stringa o float?">
+`float(Decimal("18.71"))` reintroduce l'imprecisione binaria. Se il consumatore è un altro sistema che capisce le stringhe (o gli interi in centesimi), preferisci la stringa. Se è un grafico in JavaScript, il float va bene. Decidilo, non lasciarlo al caso.
+</Aside>
+
+### In entrata: `object_hook`, `object_pairs_hook`, `parse_float`
+
+`loads` chiama `object_hook(dict)` per **ogni oggetto** decodificato, dal più interno al più esterno, e usa ciò che restituisce. È il posto per trasformare le stringhe ISO in `datetime`:
+
+```python
+def riconosci_date(d):
+    for k, v in d.items():
+        if k.endswith("_at") and isinstance(v, str):
+            d[k] = datetime.fromisoformat(v)
+    return d
+json.loads(testo, object_hook=riconosci_date)
+```
+
+`object_pairs_hook` riceve invece la **lista di coppie** `(chiave, valore)` nell'ordine del documento: serve per rifiutare chiavi duplicate o costruire strutture ordinate particolari. `parse_float` (e `parse_int`) sostituiscono il costruttore usato per i numeri: `parse_float=Decimal` è il modo giusto di leggere importi.
+
+### Round-trip
+
+"Round-trip" significa: `loads(dumps(x)) == x`. Con i tipi base funziona sempre (con l'eccezione delle tuple, che tornano liste). Con `datetime`/`Decimal` devi accoppiare un `default` in uscita con un hook in entrata: la convenzione (es. "ogni chiave che finisce in `_at` è una data ISO") è **tua**, JSON non la conosce.
+
+## curl, spiegato: un ordine con date e importi
+
+<Curl cmd={`curl -s https://corso-api-json.giuseppebosi.com/api/v1/orders/1 | jq '{created_at, total, n_righe: (.items | length)}'`} spiega={[
+  ['/api/v1/orders/1', "l'ordine 1: ha una data ISO, un importo decimale e un array di righe"],
+  ["jq '{…}'", 'costruisce un nuovo oggetto scegliendo i campi: <code>created_at</code> e <code>total</code> così come sono, <code>n_righe</code> calcolato con <code>length</code> sull&#39;array <code>items</code>'],
+]} />
+
+```json
+{
+  "created_at": "2025-01-10T21:00:00Z",
+  "total": 12.04,
+  "n_righe": 1
+}
+```
+
+La risposta completa:
+
+```json
+{"id":1,"customer_id":39,"status":"delivered","shipping_address":{"street":"Via Sestri 73","city":"Bari","zip":"15399","country":"IT"},"total":12.04,"created_at":"2025-01-10T21:00:00Z","items":[{"id":1,"order_id":1,"book_id":11,"quantity":1,"unit_price":12.04}]}
+```
+
+`created_at` è una stringa, `total` un float: proprio i due casi che vogliamo trattare meglio.
+
+<Prova path="/api/v1/orders/1" titolo="l'ordine 1" />
+
+## Python: decodifica ricca e round-trip
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx
+# python3 json_avanzato.py
+import json
+from dataclasses import dataclass, asdict, is_dataclass
+from datetime import datetime, timezone
+from decimal import Decimal
+import httpx
+
+BASE = "https://corso-api-json.giuseppebosi.com/api/v1"
+
+# --- 1. Decodifica ricca: date vere, Decimal per gli importi ---------------------------
+def riconosci_date(d: dict) -> dict:
+    for k, v in d.items():
+        if k.endswith("_at") and isinstance(v, str):
+            d[k] = datetime.fromisoformat(v)      # accetta la 'Z' da Python 3.11
+    return d
+
+testo = httpx.get(f"{BASE}/orders/1").text
+ordine = json.loads(testo, object_hook=riconosci_date, parse_float=Decimal)
+print(type(ordine["created_at"]).__name__, ordine["created_at"].year)     # datetime 2025
+print(type(ordine["total"]).__name__, ordine["total"] * 3)                 # Decimal 36.12
+
+# --- 2. Codifica di tipi non nativi con default= --------------------------------------
+@dataclass
+class Riga:
+    book_id: int
+    quantity: int
+    unit_price: Decimal
+
+def converti(o):
+    if isinstance(o, datetime): return o.isoformat().replace("+00:00", "Z")
+    if isinstance(o, Decimal):  return str(o)
+    if isinstance(o, set):      return sorted(o)
+    if is_dataclass(o):         return asdict(o)
+    raise TypeError(f"Non so serializzare {type(o).__name__}")
+
+nuovo = {
+    "created_at": datetime(2026, 9, 18, 9, 30, tzinfo=timezone.utc),
+    "total": Decimal("18.71"),
+    "tags": {"novità", "premio"},
+    "items": [Riga(7, 2, Decimal("9.355"))],
+}
+print(json.dumps(nuovo, default=converti, ensure_ascii=False))
+# {"created_at": "2026-09-18T09:30:00Z", "total": "18.71", "tags": ["novità", "premio"],
+#  "items": [{"book_id": 7, "quantity": 2, "unit_price": "9.355"}]}
+
+# --- 3. Lo stesso con una classe Encoder riusabile ------------------------------------
+class Encoder(json.JSONEncoder):
+    def default(self, o):
+        return converti(o)
+print(json.dumps({"q": datetime(2026, 1, 1, tzinfo=timezone.utc)}, cls=Encoder))
+
+# --- 4. object_pairs_hook: rifiuta le chiavi duplicate --------------------------------
+def senza_duplicati(coppie):
+    d = {}
+    for k, v in coppie:
+        if k in d:
+            raise ValueError(f"chiave duplicata: {k!r}")
+        d[k] = v
+    return d
+try:
+    json.loads('{"dup": 1, "dup": 2}', object_pairs_hook=senza_duplicati)
+except ValueError as e:
+    print(e)                                                        # chiave duplicata: 'dup'
+
+# --- 5. Round-trip verificato ------------------------------------------------------------
+def dumps(x): return json.dumps(x, default=converti, sort_keys=True)
+def loads(s): return json.loads(s, object_hook=riconosci_date, parse_float=Decimal)
+
+ritorno = loads(dumps(ordine))
+print(ritorno == ordine)                                             # False!
+print(repr(ritorno["total"]), repr(ordine["total"]))                 # '12.04'  Decimal('12.04')
+
+# Il round-trip FALLISCE: converti ha scritto il Decimal tra apici, e in lettura è rimasto
+# una stringa. Le due metà devono essere simmetriche: se in uscita scrivi un numero...
+def converti_num(o):
+    if isinstance(o, Decimal):
+        return float(o)          # numero JSON; la precisione torna grazie a parse_float=Decimal
+    return converti(o)
+def dumps2(x): return json.dumps(x, default=converti_num, sort_keys=True)
+
+andata = dumps2(ordine)
+assert loads(andata) == ordine, "il round-trip ha perso qualcosa"
+print("round-trip ok, byte:", len(andata))
+```
+
+Nota il punto 5: la prima versione **fallisce** perché in uscita il `Decimal` diventa una stringa e in entrata resta tale. L'assert finale è la prova che `converti_num` e `parse_float=Decimal` sono **simmetrici**: se cambi la convenzione da una parte sola, l'assert te lo dice. (`float(Decimal("12.04"))` si scrive `12.04` e rientra come `Decimal("12.04")`: nessuna perdita per i due decimali del denaro; per più cifre, resta la stringa in entrambe le direzioni.)
+</TabItem>
+<TabItem label="TypeScript">
+Le controparti JavaScript sono `replacer`/`toJSON` (in uscita) e `reviver` (in entrata): capitolo 6. Corrispondenze:
+
+```ts
+// default=converti           -> JSON.stringify(x, replacer)  oppure metodo toJSON() sull'oggetto
+// object_hook=riconosci_date -> JSON.parse(s, reviver)
+// parse_float=Decimal        -> non esiste: i numeri sono sempre double. Usa stringhe + una libreria
+//                               (decimal.js, big.js) o interi in centesimi.
+```
+</TabItem>
+</Tabs>
+
+## Esercizio
+
+Scarica `/api/v1/orders?limit=20`. Decodifica con `parse_float=Decimal` e `object_hook` per le date; poi calcola:
+
+1. la somma esatta dei `total` (deve essere un `Decimal`);
+2. l'ordine più recente (confronto tra `datetime`, non tra stringhe);
+3. riserializza la lista con `default=` e verifica che `loads(dumps(lista)) == lista`.
+
+<details>
+<summary>Soluzione</summary>
+
+```python
+import json, httpx
+from datetime import datetime
+from decimal import Decimal
+
+def hook(d):
+    for k, v in d.items():
+        if k.endswith("_at") and isinstance(v, str): d[k] = datetime.fromisoformat(v)
+    return d
+def conv(o):
+    if isinstance(o, datetime): return o.isoformat().replace("+00:00", "Z")
+    if isinstance(o, Decimal): return float(o)     # numero, non stringa: vedi punto 5
+    raise TypeError
+
+testo = httpx.get("https://corso-api-json.giuseppebosi.com/api/v1/orders", params={"limit": 20}).text
+ordini = json.loads(testo, object_hook=hook, parse_float=Decimal)["items"]
+print(sum(o["total"] for o in ordini))                                   # 1334.45 (un Decimal)
+print(max(ordini, key=lambda o: o["created_at"])["id"])                  # 2
+assert json.loads(json.dumps(ordini, default=conv), object_hook=hook, parse_float=Decimal) == ordini
+```
+
+Se in `conv` avessi scritto `str(o)`, `total` sarebbe tornato come **stringa** `"12.04"` e l'assert sarebbe fallito: la convenzione in uscita e quella in entrata devono combaciare.
+</details>
+
+## Errori comuni
+
+- `default=` che restituisce l'oggetto stesso → ricorsione infinita / `RecursionError`.
+- `datetime.fromisoformat` con la `Z` finale: funziona **da Python 3.11**; prima serviva `.replace("Z", "+00:00")`.
+- `object_hook` che ritorna `None` (dimenticato il `return d`): l'intero oggetto diventa `None`.
+- Usare `parse_float=Decimal` e poi sommare con `float`: torna l'imprecisione.
+
+## In sintesi
+
+`default=`/`JSONEncoder` in uscita, `object_hook`/`object_pairs_hook`/`parse_float` in entrata, e un assert di round-trip a garanzia. Nel prossimo capitolo passiamo a JavaScript: `JSON.parse` e `JSON.stringify` con `reviver`, `replacer` e `toJSON`.

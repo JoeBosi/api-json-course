@@ -1,0 +1,25 @@
+MIT License
+
+Copyright (c) 2026 Giuseppe Bosi
+
+Si concede gratuitamente il permesso, a chiunque ottenga una copia di questo software e dei file
+di documentazione associati (il "Software"), di utilizzare il Software senza restrizioni,
+compresi senza limitazione i diritti di usare, copiare, modificare, unire, pubblicare,
+distribuire, concedere in sublicenza e/o vendere copie del Software, e di permettere alle persone
+a cui il Software è fornito di farlo, alle seguenti condizioni:
+
+L'avviso di copyright di cui sopra e questo avviso di permesso devono essere inclusi in tutte le
+copie o parti sostanziali del Software.
+
+IL SOFTWARE È FORNITO "COSÌ COM'È", SENZA GARANZIE DI ALCUN TIPO, ESPRESSE O IMPLICITE,
+COMPRESE, MA NON LIMITATE A, LE GARANZIE DI COMMERCIABILITÀ, IDONEITÀ PER UN PARTICOLARE SCOPO E
+NON VIOLAZIONE. IN NESSUN CASO GLI AUTORI O I TITOLARI DEL COPYRIGHT SARANNO RESPONSABILI PER
+QUALSIASI RECLAMO, DANNO O ALTRA RESPONSABILITÀ, SIA IN UN'AZIONE CONTRATTUALE, ILLECITA O
+ALTRIMENTI, DERIVANTE DA, O IN CONNESSIONE CON IL SOFTWARE O L'USO O ALTRE OPERAZIONI NEL
+SOFTWARE.
+
+---
+
+Questa licenza si applica al CODICE: il server di prova (api/), il codice del sito (site/), gli
+script (audio/, deploy/) e tutti i frammenti di codice contenuti nelle pagine del corso.
+I TESTI del corso hanno una licenza diversa: vedi LICENSE-CONTENUTI.

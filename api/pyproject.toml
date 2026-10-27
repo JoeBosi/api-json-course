@@ -1,0 +1,26 @@
+[project]
+name = "corso-api"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.141.1",
+    "pydantic>=2.13.5",
+    "slowapi>=0.1.10",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "piper-tts>=1.8.0",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.fastapi]
+entrypoint = "app.main:app"

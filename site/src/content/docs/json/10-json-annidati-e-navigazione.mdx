@@ -1,0 +1,210 @@
+---
+title: "10. JSON annidati e navigazione"
+description: "Estrarre valori da JSON profondi senza far esplodere il programma: accesso sicuro in Python e TypeScript, JSONPath, jq e il parametro expand dell'API."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+
+## Obiettivi
+
+- Leggere valori a tre o quattro livelli di profondità senza `KeyError` / `TypeError`.
+- Usare **jq** dal terminale per esplorare, filtrare e trasformare JSON.
+- Conoscere **JSONPath** per esprimere percorsi in modo dichiarativo.
+- Capire come un'API produce JSON annidati "seguendo" le chiavi esterne (`?expand=`).
+
+## Teoria
+
+Un JSON reale non è mai piatto. L'ordine 1 con il cliente e i libri delle sue righe è un albero a **quattro livelli**: ordine → righe → libro → autore. Per arrivare al nome dell'autore del primo libro il percorso è `items[0].book.author_name`.
+
+Tre modi per percorrere un albero:
+
+1. **Accesso diretto** (`o["items"][0]["book"]["author_name"]`): veloce, ma se un pezzo manca il programma si ferma con un'eccezione.
+2. **Accesso sicuro**: `.get()` con default in Python, `?.` (optional chaining) e `??` in TypeScript. Restituisce `None`/`undefined` invece di esplodere.
+3. **Un linguaggio di percorsi**: **JSONPath** (`$.items[*].book.title`) o **jq** (`.items[].book.title`). Ideale per esplorare dati sconosciuti o per script da terminale.
+
+Come nasce un JSON annidato? Il database ha tabelle separate legate da chiavi esterne (`orders.customer_id → customers.id`, `order_items.book_id → books.id`). Il server, se glielo chiedi con `?expand=`, sostituisce l'id con l'oggetto intero. Senza `expand` ricevi solo `customer_id: 39` e devi fare una seconda richiesta: lo vedrai bene nella Sezione 2, capitolo 5.
+
+## curl, spiegato
+
+<Curl cmd={`curl -s 'https://corso-api-json.giuseppebosi.com/api/v1/orders/1?expand=items.book,customer' | jq .`} spiega={[
+  ["'…?expand=items.book,customer'", "l'URL sta tra apici singoli perché contiene <code>?</code> e <code>,</code>, che la shell potrebbe interpretare"],
+  ['?expand=', "inizio della <em>query string</em>: parametri <code>chiave=valore</code> dopo il percorso"],
+  ['items.book', "espandi le righe (<code>items</code>) e, dentro ogni riga, il libro referenziato da <code>book_id</code>"],
+  [',customer', "più valori per lo stesso parametro, separati da virgola: espandi anche il cliente"],
+  ['| jq .', "<code>.</code> è il programma jq &quot;identità&quot;: stampa il JSON com'è, ma indentato e colorato"],
+]} />
+
+```json
+{
+  "id": 1,
+  "customer_id": 39,
+  "status": "delivered",
+  "shipping_address": { "street": "Via Sestri 73", "city": "Bari", "zip": "15399", "country": "IT" },
+  "total": 12.04,
+  "created_at": "2025-01-10T21:00:00Z",
+  "customer": { "id": 39, "name": "Giovanni Costa", "email": "giovanni.costa39@example.com", "city": "Bari", "created_at": "2025-04-27T00:00:00Z" },
+  "items": [
+    {
+      "id": 1, "order_id": 1, "book_id": 11, "quantity": 1, "unit_price": 12.04,
+      "book": { "id": 11, "title": "Quello che resta di Montecarvo", "price": 12.04, "author_id": 14, "author_name": "Pietro Galli" }
+    }
+  ]
+}
+```
+
+### jq in otto mosse
+
+Lavoriamo sulla lista dei libri (`/api/v1/books?limit=100`, un oggetto con `items` e `meta`).
+
+<Curl cmd={`URL='https://corso-api-json.giuseppebosi.com/api/v1/books?limit=100'
+
+# 1. proiezione: da ogni libro tieni solo due campi
+curl -s "$URL" | jq '.items[] | {title, price}'
+
+# 2. filtro + conteggio
+curl -s "$URL" | jq '[.items[] | select(.price < 8)] | length'
+
+# 3. ordina, prendi i primi 3, stampa testo grezzo (-r) con tab
+curl -s "$URL" | jq -r '.items | sort_by(-.price) | .[0:3][] | "\\(.price)\\t\\(.title)"'
+
+# 4. variabile dalla shell con --arg
+curl -s "$URL" | jq --arg f tascabile '[.items[] | select(.attributes.format == $f) | .title] | length'
+
+# 5. appiattisci array annidati e raggruppa
+curl -s "$URL" | jq '[.items[].attributes.awards[]] | group_by(.) | map({premio: .[0], libri: length})'
+
+# 6. accesso sicuro: una chiave che non esiste vale null, non errore
+curl -s 'https://corso-api-json.giuseppebosi.com/api/v1/books/1' | jq '.attributes.dimensions_cm.h, .attributes.missing'
+
+# 7. aggregazione numerica
+curl -s "$URL" | jq '.items | map(.price) | add / length | . * 100 | round / 100'`} spiega={[
+  ["URL='…'", "variabile di shell; poi <code>&quot;$URL&quot;</code> tra doppi apici, così viene espansa ma <code>?</code> e <code>&amp;</code> restano protetti"],
+  ['.items[]', "entra in <code>items</code> e &quot;scompatta&quot; l'array: da qui in poi jq lavora un elemento alla volta"],
+  ['{title, price}', "costruisce un oggetto con quelle due chiavi (scorciatoia di <code>{title: .title, price: .price}</code>)"],
+  ['[ … ]', "raccoglie di nuovo gli elementi in un array (serve per <code>length</code>, <code>sort_by</code>…)"],
+  ['select(cond)', "lascia passare solo gli elementi per cui la condizione è vera"],
+  ['-r', "<em>raw</em>: le stringhe escono senza virgolette (utile per tabelle e script)"],
+  ['"\\(.price)\\t\\(.title)"', "interpolazione: <code>\\( )</code> inserisce un'espressione dentro una stringa; <code>\\t</code> è un tab"],
+  ['--arg f tascabile', "passa un valore dalla shell come variabile <code>$f</code> (stringa); per numeri/JSON usa <code>--argjson</code>"],
+  ['.attributes.awards[]', "<code>[]</code> su un array lo scompatta: i premi di tutti i libri finiscono in un unico flusso"],
+  ['group_by(.) | map(…)', "raggruppa valori uguali, poi trasforma ogni gruppo in un oggetto"],
+  ['.a, .b', "la virgola produce più output: uno per espressione"],
+  ['add / length', "somma degli elementi diviso il loro numero = media"],
+]} />
+
+Output (uno per comando):
+
+```
+{ "title": "Il silenzio di Ustica", "price": 18.71 }  … (80 oggetti)
+3
+34.49	Quello che resta di Sestri
+34.36	Ustica e il Novecento
+33.49	La cucina di Ustica
+30
+[ { "premio": "Bancarella", "libri": 10 }, { "premio": "Campiello", "libri": 8 }, { "premio": "Strega", "libri": 14 }, { "premio": "Viareggio", "libri": 16 } ]
+19
+null
+19.9
+```
+
+<Aside type="tip">
+`jq` è preinstallato su molte macchine Linux/macOS (`jq --version`); altrimenti `brew install jq`, `apt install jq`, `winget install jqlang.jq`. Manuale: https://jqlang.org/manual/.
+</Aside>
+
+## Python e TypeScript
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx jsonpath-ng
+import httpx
+from jsonpath_ng.ext import parse
+
+BASE = "https://corso-api-json.giuseppebosi.com/api/v1"
+o = httpx.get(f"{BASE}/orders/1", params={"expand": "items.book,customer"}).json()
+
+# accesso diretto: chiaro, ma KeyError se manca un pezzo
+print(o["items"][0]["book"]["author_name"])          # Pietro Galli
+
+# accesso sicuro: .get() a catena con default
+print(o.get("customer", {}).get("city"))             # Bari
+print(o.get("customer", {}).get("phone", "n/d"))     # n/d  (campo inesistente)
+
+# JSONPath: percorsi dichiarativi, anche con wildcard e filtri
+print([m.value for m in parse("$.items[*].book.title").find(o)])
+print([m.value for m in parse("$.items[?(@.quantity>=1)].book.author_name").find(o)])
+
+lista = httpx.get(f"{BASE}/books", params={"limit": 100}).json()
+economici = [m.value for m in parse("$.items[?(@.price<8)].title").find(lista)]
+print(len(economici))                                # 3
+```
+Note: `jsonpath_ng.ext` (non `jsonpath_ng`) serve per i filtri `[?(...)]`. Per un percorso fisso su cui non serve flessibilità, `.get()` a catena è più leggibile e più veloce.
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types naviga.ts
+const BASE = "https://corso-api-json.giuseppebosi.com/api/v1";
+const o = await (await fetch(`${BASE}/orders/1?expand=items.book,customer`)).json();
+
+// accesso diretto: TypeError se un pezzo è undefined
+console.log(o.items[0].book.author_name);            // Pietro Galli
+
+// optional chaining ?. e nullish coalescing ??
+console.log(o.customer?.city);                       // Bari
+console.log(o.customer?.phone ?? "n/d");             // n/d
+console.log(o.items?.[5]?.book?.title ?? "nessuna sesta riga");
+
+// percorso da stringa, senza librerie: una funzione di 5 righe
+function leggi(obj: unknown, percorso: string, fallback?: unknown) {
+  return percorso.split(".").reduce<any>((acc, k) => (acc == null ? undefined : acc[k]), obj) ?? fallback;
+}
+console.log(leggi(o, "shipping_address.zip"));       // 15399
+console.log(leggi(o, "items.0.book.price"));         // 12.04
+console.log(leggi(o, "items.9.book.price", 0));      // 0
+
+// "jq in TypeScript": map/filter/sort sui dati
+const lista = await (await fetch(`${BASE}/books?limit=100`)).json();
+const top3 = [...lista.items].sort((a, b) => b.price - a.price).slice(0, 3).map((b) => `${b.price}\t${b.title}`);
+console.log(top3.join("\n"));
+```
+Per JSONPath vero in TS esiste `jsonpath-plus` (`npm install jsonpath-plus`): `JSONPath({ path: "$.items[*].book.title", json: o })`.
+</TabItem>
+</Tabs>
+
+## Prova subito
+
+<Prova path="/api/v1/orders/1?expand=items.book,customer" titolo="quattro livelli: ordine → righe → libro → autore" />
+
+<Prova path="/api/v1/categories?tree=true" titolo="un albero ricorsivo: categorie con children" />
+
+## Esercizio
+
+Con jq (o in Python/TS) partendo da `/api/v1/categories?tree=true`:
+
+1. Stampa i nomi delle sole categorie **radice**.
+2. Stampa, per ogni radice, i nomi delle sottocategorie.
+3. Somma `books_count` di tutte le categorie, a qualsiasi livello (suggerimento jq: `..` visita ricorsivamente tutti i nodi).
+
+<details>
+<summary>Soluzione</summary>
+
+```bash
+URL='https://corso-api-json.giuseppebosi.com/api/v1/categories?tree=true'
+curl -s "$URL" | jq -r '.items[].name'                                    # 1
+curl -s "$URL" | jq -r '.items[] | "\(.name): \([.children[].name] | join(", "))"'   # 2
+curl -s "$URL" | jq '[.. | .books_count? | numbers] | add'                # 3 → 80
+```
+`..` produce ogni valore dell'albero; `.books_count?` prova a leggere la chiave ignorando gli errori sui non-oggetti; `numbers` scarta i `null`.
+</details>
+
+## Errori comuni
+
+- **`o["items"][0]` su una lista vuota** → `IndexError`/`undefined`: controlla la lunghezza o usa `?.[0]`.
+- **Confondere `null` con "chiave assente"**: in jq e in JS entrambi arrivano come `null`/`undefined`; se la differenza conta, usa `has("k")` (jq) / `"k" in obj` (JS) / `"k" in d` (Python).
+- **Dimenticare gli apici intorno all'URL con `?` e `&`**: la shell spezza il comando in silenzio.
+- **`jq '.items[].price | add'`** non funziona: `add` vuole un array, quindi `[.items[].price] | add` oppure `.items | map(.price) | add`.
+
+## In sintesi
+
+Accesso diretto quando la forma è garantita, accesso sicuro (`.get`, `?.`) quando può mancare qualcosa, jq/JSONPath per esplorare. E ricorda: l'annidamento nasce dalle relazioni tra tabelle, che l'API espande per te. Prossimo capitolo: quando il JSON è troppo grande per stare in memoria.

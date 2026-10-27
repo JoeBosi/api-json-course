@@ -1,0 +1,172 @@
+---
+title: "6. JavaScript: parse e stringify"
+description: "JSON.parse e JSON.stringify fino in fondo: replacer (funzione e array), reviver per le date, toJSON, indentazione, SyntaxError, BigInt, cosa sparisce (undefined, funzioni), structuredClone contro il trucco stringify/parse."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+
+## Obiettivi
+
+- Padroneggiare i tre argomenti di `JSON.stringify(valore, replacer, spazi)` e i due di `JSON.parse(testo, reviver)`.
+- Far tornare le date come `Date` con un `reviver`, e controllare l'uscita con `toJSON`.
+- Sapere cosa **sparisce** in serializzazione (`undefined`, funzioni, `Symbol`) e cosa **esplode** (`BigInt`, cicli).
+- Copiare oggetti nel modo giusto: `structuredClone`, non `JSON.parse(JSON.stringify(x))`.
+
+## Teoria
+
+In JavaScript (e quindi in TypeScript) c'è un solo oggetto globale, `JSON`, con due metodi. Sono nel linguaggio da ES5 (2009): nessun import.
+
+### `JSON.parse(testo, reviver?)`
+
+Trasforma testo in valori: oggetti → `Object`, array → `Array`, numeri → `number` (double, capitolo 3), `null` → `null`. Se il testo non è valido lancia **`SyntaxError`** con un messaggio che indica la posizione. Il `reviver(chiave, valore)` viene chiamato per ogni coppia, **dalle foglie alla radice**; il valore restituito sostituisce quello letto (restituire `undefined` cancella la proprietà).
+
+### `JSON.stringify(valore, replacer?, spazi?)`
+
+Trasforma valori in testo. Le regole non ovvie:
+
+| Valore | Risultato |
+|---|---|
+| `undefined`, funzione, `Symbol` come **proprietà** | la proprietà **sparisce** |
+| gli stessi dentro un **array** | diventano `null` |
+| `undefined` come valore top-level | `stringify` restituisce `undefined` (non una stringa!) |
+| `NaN`, `Infinity` | `null` |
+| `Date` | stringa ISO (grazie a `Date.prototype.toJSON`) |
+| `Map`, `Set` | `{}` (non serializzati! converti in array prima) |
+| `BigInt` | **`TypeError`** |
+| oggetto con riferimento circolare | **`TypeError: Converting circular structure`** |
+| oggetto con metodo `toJSON()` | viene serializzato **ciò che `toJSON` restituisce** |
+
+Il `replacer` può essere una **funzione** `(chiave, valore) => nuovoValore` (chiamata dalla radice alle foglie, `undefined` per omettere) oppure un **array di chiavi** da tenere: una whitelist. `spazi` è un numero (fino a 10) o una stringa di indentazione.
+
+<Aside type="tip" title="`toJSON` è il `default=` di Python, al contrario">
+In Python decidi *fuori* dall'oggetto come serializzarlo (`default=`). In JavaScript l'oggetto lo decide *da sé* con `toJSON()`. `Date` lo implementa già: è per questo che le date escono come stringhe ISO senza fare nulla.
+</Aside>
+
+## curl, spiegato: un libro con le recensioni (e le loro date)
+
+<Curl cmd={`curl -s 'https://corso-api-json.giuseppebosi.com/api/v1/books/7?expand=reviews' | jq '.reviews[0]'`} spiega={[
+  ["'…/books/7?expand=reviews'", '<code>expand</code> chiede al server di includere anche le recensioni collegate (chiave esterna <code>reviews.book_id</code>). Apici per proteggere <code>?</code>'],
+  ["jq '.reviews[0]'", 'il primo elemento dell&#39;array <code>reviews</code>: <code>[0]</code> è l&#39;indice, come in JavaScript'],
+]} />
+
+```json
+{
+  "id": 22,
+  "rating": 5,
+  "comment": "Da regalare a tutti.",
+  "created_at": "2025-04-11T00:00:00Z",
+  "customer_name": "Martina Conti"
+}
+```
+
+`created_at` arriva come stringa: con un `reviver` la faremo diventare `Date` al momento del parsing.
+
+<Prova path="/api/v1/books/7?expand=reviews" titolo="libro 7 con recensioni" />
+
+## JavaScript/TypeScript: il giro completo
+
+<Tabs syncKey="lang">
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types json_js.ts
+const BASE = "https://corso-api-json.giuseppebosi.com/api/v1";
+
+// --- 1. parse con reviver: le chiavi *_at diventano Date ---------------------------------
+const reviver = (chiave: string, valore: unknown) =>
+  chiave.endsWith("_at") && typeof valore === "string" ? new Date(valore) : valore;
+
+const testo = await (await fetch(`${BASE}/books/7?expand=reviews`)).text();
+const libro = JSON.parse(testo, reviver);
+console.log(libro.created_at instanceof Date, libro.reviews[0].created_at.getFullYear());  // true 2025
+
+// --- 2. stringify: indentazione, replacer-array (whitelist), replacer-funzione ------------
+console.log(JSON.stringify(libro, null, 2).split("\n").length);       // righe dell'output indentato
+console.log(JSON.stringify(libro, ["id", "title", "price"]));         // {"id":7,"title":"Oltre Trieste","price":28.25}
+const senzaNull = (k: string, v: unknown) => (v === null ? undefined : v);
+console.log(JSON.stringify({ a: 1, b: null, c: [null] }, senzaNull));  // {"a":1,"c":[null]}  (nell'array resta null)
+
+// --- 3. cosa sparisce, cosa esplode ------------------------------------------------------
+console.log(JSON.stringify({ u: undefined, f: () => 1, s: Symbol("x"), arr: [undefined] }));  // {"arr":[null]}
+console.log(JSON.stringify(undefined));                    // undefined (non è una stringa!)
+console.log(JSON.stringify(new Map([["a", 1]])));          // {}
+console.log(JSON.stringify([...new Map([["a", 1]])]));     // [["a",1]]
+try { JSON.stringify({ n: 10n }); } catch (e) { console.log((e as Error).message); }  // Do not know how to serialize a BigInt
+const ciclo: Record<string, unknown> = {}; ciclo.me = ciclo;
+try { JSON.stringify(ciclo); } catch (e) { console.log((e as Error).name); }          // TypeError
+
+// --- 4. BigInt: serializzalo come stringa, esplicitamente --------------------------------
+const bigReplacer = (_k: string, v: unknown) => (typeof v === "bigint" ? v.toString() : v);
+console.log(JSON.stringify({ id: 9007199254740993n }, bigReplacer));  // {"id":"9007199254740993"}
+const bigReviver = (k: string, v: unknown) => (k === "id" && typeof v === "string" ? BigInt(v) : v);
+console.log(JSON.parse('{"id":"9007199254740993"}', bigReviver).id + 1n);   // 9007199254740994n
+
+// --- 5. toJSON: l'oggetto decide la propria forma ----------------------------------------
+class Prezzo {
+  centesimi: number; valuta: string;
+  constructor(centesimi: number, valuta = "EUR") { this.centesimi = centesimi; this.valuta = valuta; }
+  toJSON() { return { amount: this.centesimi / 100, currency: this.valuta }; }
+}
+console.log(JSON.stringify({ price: new Prezzo(1871) }));   // {"price":{"amount":18.71,"currency":"EUR"}}
+
+// --- 6. SyntaxError con posizione --------------------------------------------------------
+try { JSON.parse('{"id": 7,}'); } catch (e) { console.log((e as SyntaxError).message); }
+// Expected double-quoted property name in JSON at position 9 (line 1 column 10)
+
+// --- 7. Copie: structuredClone conserva Date, Map, Set; il trucco stringify no ------------
+const orig = { quando: new Date("2026-01-01T00:00:00Z"), tags: new Set(["a"]) };
+const copiaBuona = structuredClone(orig);
+const copiaCattiva = JSON.parse(JSON.stringify(orig));
+console.log(copiaBuona.quando instanceof Date, copiaBuona.tags instanceof Set);   // true true
+console.log(typeof copiaCattiva.quando, copiaCattiva.tags);                       // string {}
+```
+</TabItem>
+<TabItem label="Python">
+Le corrispondenze con il capitolo 5:
+
+```python
+# JSON.parse(s, reviver)          -> json.loads(s, object_hook=...)   (Python passa il dict intero, non chiave/valore)
+# JSON.stringify(x, replacer)     -> json.dumps(x, default=...)       (solo per i tipi sconosciuti; per filtrare, filtra prima)
+# JSON.stringify(x, null, 2)      -> json.dumps(x, indent=2)
+# obj.toJSON()                    -> nessun equivalente: la logica sta in default= o nell'Encoder
+# structuredClone(x)              -> copy.deepcopy(x)
+```
+</TabItem>
+</Tabs>
+
+## Esercizio
+
+Scarica `/api/v1/orders/1` e, usando solo `JSON.parse`/`JSON.stringify`:
+
+1. converti `created_at` in `Date` e stampa quanti giorni sono passati da allora;
+2. produci un JSON che contenga solo `id`, `status`, `total` e le righe `items` ridotte a `{book_id, quantity}` (replacer-funzione);
+3. spiega perché `JSON.stringify({ x: undefined })` dà `{}` ma `JSON.stringify([undefined])` dà `[null]`.
+
+<details>
+<summary>Soluzione</summary>
+
+```ts
+const o = JSON.parse(await (await fetch("https://corso-api-json.giuseppebosi.com/api/v1/orders/1")).text(),
+  (k, v) => (k.endsWith("_at") ? new Date(v) : v));
+console.log(Math.floor((Date.now() - o.created_at.getTime()) / 86_400_000), "giorni");
+
+const tieni = new Set(["id", "status", "total", "items", "book_id", "quantity", ""]);
+const ridotto = JSON.stringify(o, (k, v) => (Array.isArray(v) || tieni.has(k) || !isNaN(Number(k)) ? v : undefined));
+console.log(ridotto);   // {"id":1,"status":"delivered","total":12.04,"items":[{"id":1,"book_id":11,"quantity":1}]}
+```
+
+(La chiave `""` è la radice; gli indici degli array arrivano come stringhe `"0"`, `"1"`… e vanno lasciati passare. Nota che `id` passa anche dentro le righe: il replacer vede solo la chiave, non il percorso. Per distinguere `items[].id` da `id` servirebbe un filtro in due passaggi.)
+
+3\. Un array deve conservare le **posizioni**: omettere un elemento sposterebbe tutti gli altri, quindi `undefined` diventa `null`. In un oggetto la proprietà può sparire senza conseguenze sugli altri campi.
+</details>
+
+## Errori comuni
+
+- Aspettarsi che `JSON.parse` restituisca `Date`: sono stringhe finché non scrivi un reviver.
+- Serializzare `Map`/`Set`: escono `{}` senza errore. Converti con `[...map]` / `[...set]`.
+- `JSON.parse(JSON.stringify(x))` per clonare: perde `Date`, `Map`, `Set`, `undefined`, e fallisce con `BigInt` e cicli. Usa `structuredClone`.
+- `JSON.stringify(x, null, 2)` in produzione sul filo: byte sprecati. Indenta solo per gli umani.
+
+## In sintesi
+
+`parse` + `reviver`, `stringify` + `replacer`/`toJSON`/`spazi`: quattro leve per controllare tutto. Ricorda cosa sparisce (`undefined`, funzioni, `Map`/`Set`) e cosa esplode (`BigInt`, cicli). Nel prossimo capitolo TypeScript: dare un **tipo** a ciò che `JSON.parse` restituisce, e validarlo davvero con zod.

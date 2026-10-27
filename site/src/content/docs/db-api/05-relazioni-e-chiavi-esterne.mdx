@@ -1,0 +1,246 @@
+---
+title: "5. Relazioni e chiavi esterne"
+description: "Chiavi primarie ed esterne viste dall'API: GET /schema, relazioni 1-N e N-N, gerarchie, risorse annidate, ?expand per attraversare tre tabelle in una richiesta, e il problema N+1."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+
+## Obiettivi
+
+- Leggere lo schema di un database attraverso l'API: tabelle, chiavi primarie (PK), chiavi esterne (FK).
+- Riconoscere i tre tipi di relazione — **1-N**, **N-N**, **gerarchica** — e vedere come l'API li espone.
+- Usare le risorse annidate (`/authors/1/books`) e `?expand=` per seguire le chiavi esterne.
+- Capire il problema **N+1** e perché `expand` (o un join) lo risolve.
+- Fare un join **lato client** quando l'API non offre l'espansione.
+
+## Teoria
+
+### Chiavi primarie e chiavi esterne
+
+In un database relazionale ogni riga di una tabella ha una **chiave primaria** (PK): un valore unico che la identifica, quasi sempre una colonna `id`. Quando una riga deve "puntare" a una riga di un'altra tabella, contiene il valore della PK di quella riga in una colonna detta **chiave esterna** (FK): `books.author_id` contiene l'`id` di una riga di `authors`.
+
+```
+authors                     books
+┌────┬────────────────┐     ┌────┬──────────────────────┬───────────┐
+│ id │ name           │     │ id │ title                │ author_id │
+├────┼────────────────┤     ├────┼──────────────────────┼───────────┤
+│ 19 │ Laura Esposito │◄────│  1 │ Il silenzio di Ustica│    19     │
+│  4 │ Tomás Aldana   │◄──┬─│ 57 │ Le estati a Trieste  │     4     │
+└────┴────────────────┘   └─│ 47 │ Contro Vieste        │     4     │
+   PK                       └────┴──────────────────────┴───────────┘
+                               PK                          FK → authors.id
+```
+
+Il database **garantisce** che una FK punti a una riga esistente (*integrità referenziale*): non puoi inserire un libro con `author_id = 999` se l'autore 999 non c'è, e non puoi cancellare un autore che ha libri (o, a seconda della regola, i libri vengono cancellati a cascata). Lo vedrai come errore 422/409 nell'API (capitolo 13).
+
+### I tre tipi di relazione
+
+| Tipo | Come si realizza | Nel dataset |
+|---|---|---|
+| **1-N** (uno a molti) | una FK nella tabella "molti" | un autore → molti libri (`books.author_id`); un cliente → molti ordini (`orders.customer_id`); un libro → molte recensioni (`reviews.book_id`) |
+| **N-N** (molti a molti) | una **tabella ponte** con due FK | libri ↔ tag tramite `book_tags(book_id, tag_id)`; ordini ↔ libri tramite `order_items(order_id, book_id, quantity, unit_price)` — la tabella ponte può avere dati propri |
+| **gerarchica** (auto-relazione) | una FK verso la **stessa** tabella | `categories.parent_id → categories.id`: "Gialli" sta sotto "Narrativa" |
+
+### Come l'API espone le relazioni
+
+Quattro modi, dal più semplice al più potente:
+
+1. **L'id nudo**: `"author_id": 19`. Il client sa che deve fare `GET /authors/19` se vuole il nome.
+2. **Risorse annidate**: `GET /authors/19/books` — "i libri dell'autore 19". L'URL segue la FK al contrario (dal padre ai figli).
+3. **Espansione**: `GET /books/1?expand=author,category` — il server sostituisce (o affianca) l'id con l'oggetto intero. Una richiesta invece di tre.
+4. **Filtri su relazione**: `GET /books?category=narrativa` include le sottocategorie: il server usa una query ricorsiva sulla gerarchia.
+
+### Il problema N+1
+
+Vuoi stampare i 20 libri di una pagina con il nome dell'autore. Con il modo 1 fai **1** richiesta per la lista + **20** per gli autori = 21 richieste (N+1). Con 1.000 libri, 1.001. È il bug di performance più comune nei client di API (e negli ORM). Soluzioni: `expand` (il server fa un JOIN), oppure scaricare **una volta** la tabella piccola (gli autori sono 20) e fare il join in memoria.
+
+## curl, spiegato
+
+### Lo schema: PK e FK di ogni tabella
+
+<Curl cmd={`curl -sS https://corso-api-json.giuseppebosi.com/api/v1/schema \\
+  | jq '.tables | to_entries[] | {tabella: .key, pk: .value.primary_key, fk: [.value.foreign_keys[] | "\\(.column) → \\(.references.table).\\(.references.column)"], righe: .value.rows}'`} spiega={[
+  ['/api/v1/schema', 'endpoint di introspezione: per ogni tabella colonne, PK, FK e numero di righe (viene da <code>PRAGMA table_info</code> e <code>PRAGMA foreign_key_list</code> di SQLite)'],
+  ['| jq …', '<code>to_entries[]</code> trasforma l&#39;oggetto <code>tables</code> in coppie chiave/valore; per ognuna costruiamo un riassunto leggibile'],
+]} />
+
+```json
+{ "tabella": "authors",     "pk": ["id"],                "fk": [],                                                          "righe": 20 }
+{ "tabella": "book_tags",   "pk": ["book_id","tag_id"],  "fk": ["tag_id → tags.id", "book_id → books.id"],                  "righe": 126 }
+{ "tabella": "books",       "pk": ["id"],                "fk": ["category_id → categories.id", "author_id → authors.id"],   "righe": 80 }
+{ "tabella": "categories",  "pk": ["id"],                "fk": ["parent_id → categories.id"],                               "righe": 10 }
+{ "tabella": "customers",   "pk": ["id"],                "fk": [],                                                          "righe": 40 }
+{ "tabella": "order_items", "pk": ["id"],                "fk": ["book_id → books.id", "order_id → orders.id"],              "righe": 305 }
+{ "tabella": "orders",      "pk": ["id"],                "fk": ["customer_id → customers.id"],                              "righe": 120 }
+{ "tabella": "reviews",     "pk": ["id"],                "fk": ["customer_id → customers.id", "book_id → books.id"],        "righe": 243 }
+{ "tabella": "tags",        "pk": ["id"],                "fk": [],                                                          "righe": 10 }
+```
+
+Nota `book_tags`: la PK è **composta** (`book_id` + `tag_id`), tipico delle tabelle ponte; e `categories` ha una FK verso se stessa.
+
+<Prova path="/api/v1/schema" titolo="lo schema completo, colonna per colonna" />
+
+### Espandere: un libro con autore, categoria e tag
+
+<Curl cmd={`curl -sS 'https://corso-api-json.giuseppebosi.com/api/v1/books/1?expand=author,category,tags' | jq '{title, author_id, author: .author.name, category: .category.name, tags}'`} spiega={[
+  ['?expand=author,category,tags', 'lista separata da virgole delle relazioni da includere. Valori ammessi su <code>/books/{id}</code>: <code>author</code>, <code>category</code>, <code>tags</code>, <code>reviews</code>'],
+  ['| jq {…}', 'seleziona pochi campi: l&#39;oggetto espanso <code>author</code> convive con l&#39;id nudo <code>author_id</code>'],
+]} />
+
+```json
+{ "title": "Il silenzio di Ustica", "author_id": 19, "author": "Laura Esposito", "category": "Gialli e thriller", "tags": [] }
+```
+
+Senza `expand`, la risposta ha solo `"author_id": 19` e `"category_id": 2`.
+
+### Tre tabelle in una richiesta: un ordine con righe, libri e cliente
+
+`orders` → `order_items` (1-N) → `books` (FK `book_id`) → `authors` (FK `author_id`), più `customers` (FK `customer_id`). Con `expand=items.book,customer` il server percorre tutta la catena:
+
+<Curl cmd={`curl -sS 'https://corso-api-json.giuseppebosi.com/api/v1/orders/1?expand=items.book,customer' | python3 -m json.tool`} spiega={[
+  ['expand=items.book', 'il punto indica un livello in più: espandi <code>items</code> e, dentro ogni riga, espandi <code>book</code>'],
+  ['expand=…,customer', 'e aggiungi l&#39;oggetto cliente'],
+]} />
+
+```json
+{
+    "id": 1,
+    "customer_id": 39,
+    "status": "delivered",
+    "shipping_address": { "street": "Via Sestri 73", "city": "Bari", "zip": "15399", "country": "IT" },
+    "total": 12.04,
+    "created_at": "2025-01-10T21:00:00Z",
+    "customer": { "id": 39, "name": "Giovanni Costa", "email": "giovanni.costa39@example.com", "city": "Bari", … },
+    "items": [
+        {
+            "id": 1, "order_id": 1, "book_id": 11, "quantity": 1, "unit_price": 12.04,
+            "book": { "id": 11, "title": "Quello che resta di Montecarvo", "price": 12.04, "author_id": 14, "author_name": "Pietro Galli" }
+        }
+    ]
+}
+```
+
+Leggilo seguendo le frecce: `customer_id: 39` → `customer.id: 39`; `items[0].book_id: 11` → `items[0].book.id: 11`; `book.author_id: 14` → `author_name: "Pietro Galli"`. Nota anche `unit_price` nella riga d'ordine: è il prezzo **al momento dell'acquisto**, copiato dal libro; se il libro cambia prezzo, l'ordine storico non cambia. È un esempio di dato "proprio" della tabella ponte.
+
+<Prova path="/api/v1/orders/1?expand=items.book,customer" titolo="un ordine con tutta la catena di FK" />
+
+### Risorse annidate e gerarchia
+
+<Curl cmd={`curl -sS 'https://corso-api-json.giuseppebosi.com/api/v1/authors/4/books?limit=100' | jq '[.items[] | .title]'
+curl -sS 'https://corso-api-json.giuseppebosi.com/api/v1/customers/1' | jq .orders_summary
+curl -sS 'https://corso-api-json.giuseppebosi.com/api/v1/categories?tree=true' | jq '.items[] | "\\(.name) (\\(.books_count)): \\([.children[].name] | join(", "))"'`} spiega={[
+  ['/authors/4/books', 'risorsa annidata: tutti i libri con <code>author_id = 4</code> (paginata come ogni lista). Se l&#39;autore 4 non esiste → 404'],
+  ['/customers/1', 'il cliente con un riepilogo calcolato sui suoi ordini (<code>orders_summary</code>: conteggio, totale speso, ultimo ordine)'],
+  ['/categories?tree=true', 'invece della lista piatta, l&#39;albero: ogni categoria ha <code>children</code> costruiti seguendo <code>parent_id</code>'],
+]} />
+
+```
+["Le estati a Trieste", "Contro Vieste", "Vite di Kepler-7"]
+{"orders_count": 1, "total_spent": 93.14, "last_order_at": "2024-02-17T16:00:00Z"}
+"Narrativa (8): Gialli e thriller, Fantascienza, Romanzi storici"
+"Saggistica (14): Storia, Scienza e tecnologia, Informatica"
+"Cucina (9): "
+"Ragazzi (12): "
+```
+
+Il numero tra parentesi conta i libri **direttamente** nella categoria; `GET /categories/narrativa/books` (o `/books?category=narrativa`) restituisce invece `total: 25` perché include le tre sottocategorie (`?deep=false` per solo il livello diretto: 8). Altre annidate: `/customers/1/orders`, `/books/2/reviews` (con `customer_name` già joinato).
+
+## Python e TypeScript
+
+Due tecniche: **expand** per l'ordine (una richiesta) e **join lato client** per i libri di un autore con il nome della categoria (le categorie sono 10: si scaricano una volta e si indicizzano per `id`).
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# python3 relazioni.py
+import httpx
+
+base = "https://corso-api-json.giuseppebosi.com/api/v1"
+with httpx.Client(base_url=base) as c:
+    # 1. expand: l'ordine con righe, libri e cliente in UNA richiesta
+    o = c.get("/orders/1", params={"expand": "items.book,customer"}).raise_for_status().json()
+    print(f'Ordine {o["id"]} di {o["customer"]["name"]} ({o["customer"]["city"]}), stato {o["status"]}')
+    for riga in o["items"]:
+        print(f'  {riga["quantity"]} x {riga["book"]["title"]} di {riga["book"]["author_name"]} @ {riga["unit_price"]} €')
+
+    # 2. join lato client: dizionario id -> nome, poi lookup per ogni libro (niente N+1)
+    categorie = {cat["id"]: cat["name"] for cat in c.get("/categories").json()["items"]}
+    autore = c.get("/authors/4").raise_for_status().json()
+    libri = c.get("/authors/4/books", params={"limit": 100}).json()["items"]
+    print(f'\n{autore["name"]} ({autore["country"]}): {len(libri)} libri')
+    for b in libri:
+        print(f'  {b["published_year"]}  {b["title"]:<30} [{categorie[b["category_id"]]}]')
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types relazioni.ts
+const base = "https://corso-api-json.giuseppebosi.com/api/v1";
+const get = async (p: string) => {
+  const r = await fetch(base + p);
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+};
+
+// 1. expand: l'ordine con righe, libri e cliente in UNA richiesta
+const o = await get("/orders/1?expand=items.book,customer");
+console.log(`Ordine ${o.id} di ${o.customer.name} (${o.customer.city}), stato ${o.status}`);
+for (const riga of o.items) console.log(`  ${riga.quantity} x ${riga.book.title} di ${riga.book.author_name} @ ${riga.unit_price} €`);
+
+// 2. join lato client: Map id -> nome, poi lookup per ogni libro (niente N+1)
+const categorie = new Map<number, string>((await get("/categories")).items.map((c: any) => [c.id, c.name]));
+const autore = await get("/authors/4");
+const libri = (await get("/authors/4/books?limit=100")).items;
+console.log(`\n${autore.name} (${autore.country}): ${libri.length} libri`);
+for (const b of libri) console.log(`  ${b.published_year}  ${b.title.padEnd(30)} [${categorie.get(b.category_id)}]`);
+```
+</TabItem>
+</Tabs>
+
+Output:
+
+```
+Ordine 1 di Giovanni Costa (Bari), stato delivered
+  1 x Quello che resta di Montecarvo di Pietro Galli @ 12.04 €
+
+Tomás Aldana (ES): 3 libri
+  2007  Le estati a Trieste            [Narrativa]
+  2014  Contro Vieste                  [Saggistica]
+  2019  Vite di Kepler-7               [Storia]
+```
+
+Totale richieste: 1 + 3 = **4**, indipendentemente da quanti libri ha l'autore. La versione ingenua (una `GET /categories/{id}` per libro) ne farebbe 1 + 2 + N.
+
+<Aside type="tip" title="Quando usare cosa">
+`expand` quando il server lo offre e ti servono pochi oggetti collegati. Join lato client quando la tabella collegata è piccola e la scarichi comunque (categorie, stati, valute). Per query davvero multi-tabella con aggregazioni: capitolo 12, SQL via API.
+</Aside>
+
+## Prova subito
+
+<Prova path="/api/v1/books?expand=author,category&limit=3" titolo="expand funziona anche sulle liste" />
+<Prova path="/api/v1/categories/saggistica/books?limit=3" titolo="libri di Saggistica e sottocategorie (CTE ricorsiva sul server)" />
+<Prova path="/api/v1/books/2/reviews?min_rating=4" titolo="recensioni ≥ 4 stelle del libro 2, con il nome del cliente (JOIN)" />
+
+## Esercizio
+
+1. Usando **solo** `/api/v1/schema`, elenca la catena di chiavi esterne che collega `reviews` a `authors` (passando per `books`).
+2. Scrivi uno script che, per l'ordine 2, stampi il nome del **cliente** e, per ogni riga, il **titolo** del libro e la **categoria** (nome) del libro. Suggerimento: `expand=items.book,customer` non include la categoria del libro — ti serve un secondo passo. Quante richieste fai in tutto?
+
+<details>
+<summary>Soluzione</summary>
+
+1. `reviews.book_id → books.id`, poi `books.author_id → authors.id`. (E `reviews.customer_id → customers.id` è un'altra strada, verso i clienti.)
+2. Due strategie: (a) `expand=items.book,customer` + una `GET /books/{id}?expand=category` per riga → 1 + N richieste; (b) `expand=items.book,customer` + `GET /categories` una volta + `GET /books/{id}` per avere `category_id`… ancora N. La strada migliore con questa API: `expand=items,customer` e poi `GET /books?…` è filtrabile solo per un autore/categoria, non per lista di id; quindi la soluzione **corretta e minima** è la (a) per ordini piccoli, oppure il capitolo 12 (`POST /sql` con un JOIN su quattro tabelle) per farlo in una sola richiesta. Il punto dell'esercizio è proprio accorgersi del limite: un'API REST "a risorse" a volte richiede più round-trip di quanto vorresti.
+</details>
+
+## Errori comuni
+
+- **Confondere `author_id` (FK) con `id` (PK)**: `GET /authors/{book.id}` dà l'autore sbagliato o un 404.
+- **Espansione non supportata**: `expand=publisher` → 400 `bad_expand`, con `details.allowed`. Leggi l'elenco.
+- **N+1 nascosto**: un `for` che fa una `GET` per elemento. Se vedi un loop con dentro `fetch`/`get`, chiediti se c'è un `expand` o una tabella da scaricare una volta.
+- **Contare i figli con `books_count` della categoria padre**: il campo conta solo i libri diretti; per il totale ricorsivo usa `/categories/{slug}/books` o `/books?category=`.
+
+## In sintesi
+
+PK identifica, FK collega. 1-N = una FK; N-N = tabella ponte; gerarchia = FK su se stessa. L'API le espone con id nudi, risorse annidate, `expand` (anche a più livelli: `items.book`) e filtri ricorsivi. Evita l'N+1. Nel prossimo capitolo iniziamo a **scrivere**: sandbox e CRUD.

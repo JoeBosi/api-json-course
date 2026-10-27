@@ -1,0 +1,65 @@
+# corso-api-json — Corso JSON & API. Un solo servizio (corso-api-json, 127.0.0.1:8795) serve
+# /api/* (FastAPI) e il sito statico su tutto il resto.
+#
+# Gira con l'utente di sistema `corso-api`, NON come root:
+#   codice + venv : /opt/corso-api-json          (root:corso-api, sola lettura per il servizio)
+#   dati+sandbox  : /var/lib/corso-api-json      (corso-api, unica cartella scrivibile)
+#   segreti       : /opt/corso-api-json/.env     (640 root:corso-api, hash della password)
+# Installazione e aggiornamento: deploy/installa-utente-api.sh (da lanciare via SSH).
+# Niente CSP: Starlight usa script inline per tema e ricerca, Swagger UI carica da CDN.
+
+[Unit]
+Description=corso-api-json - Corso JSON & API: FastAPI + sito Starlight su 127.0.0.1:8795
+Documentation=file:///opt/corso-api-json/CLAUDE.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=corso-api
+Group=corso-api
+WorkingDirectory=/opt/corso-api-json/api
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=CORSO_DATA_DIR=/var/lib/corso-api-json
+Environment=CORSO_SITE_DIST=/opt/corso-api-json/site/dist
+Environment=CORSO_RATE_LIMIT=30/minute
+Environment=CORSO_SANDBOX_MAX=100
+Environment=CORSO_SANDBOX_TTL_HOURS=6
+Environment=CORSO_API_IDLE_MIN=60
+ExecStart=/opt/corso-api-json/api/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8795 --workers 1 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=always
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=20
+SyslogIdentifier=corso-api-json
+
+# --- blindatura: il servizio può scrivere solo nella cartella dei dati ---------------------
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/corso-api-json
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

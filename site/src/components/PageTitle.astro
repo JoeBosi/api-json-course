@@ -1,0 +1,9 @@
+---
+// Override del titolo di pagina di Starlight: aggiunge il player audio sotto il titolo dei capitoli.
+import Default from '@astrojs/starlight/components/PageTitle.astro';
+import Lettura from './Lettura.astro';
+const entry = Astro.locals.starlightRoute.entry;
+const conAudio = entry.data.template !== 'splash';
+---
+<Default><slot /></Default>
+{conAudio && <Lettura slug={entry.id.replace(/\.mdx?$/, '')} />}

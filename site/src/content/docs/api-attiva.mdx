@@ -1,0 +1,55 @@
+---
+title: Attiva l'API di prova
+description: L'API di prova del corso è spenta quando nessuno la usa. Qui la accendi con la password.
+---
+
+import AttivaApi from '../../components/AttivaApi.astro';
+
+Il corso è libero e aperto a tutti. Il **server di prova** su cui girano gli esempi
+(`/api/v1`, Swagger su `/api/docs`, le sandbox) invece **resta spento quando nessuno lo usa**:
+è un servizio che scrive su disco e accetta query, e lasciarlo aperto giorno e notte a chiunque
+non ha senso.
+
+<AttivaApi />
+
+## Come funziona
+
+- Con l'API spenta ogni chiamata risponde **503** con un messaggio che rimanda a questa pagina:
+  i capitoli si leggono lo stesso, ma i widget «Prova» e gli esempi `curl` non rispondono.
+- Una volta accesa resta attiva finché la si usa, e **si spegne da sola dopo un'ora** senza
+  chiamate. Non serve spegnerla a mano.
+- Chi ha la password può riaccenderla quando vuole. I tentativi sbagliati sono limitati
+  (cinque ogni quarto d'ora per indirizzo), per evitare che qualcuno la indovini provando.
+
+:::note[Non hai la password?]
+La password serve solo per **accendere** il server di prova, non per leggere il corso: tutti i
+capitoli, gli esempi e le spiegazioni sono liberamente accessibili. Se stai seguendo il corso e
+ti serve il server acceso, scrivi all'autore (il contatto è in fondo alla pagina).
+:::
+
+## Verificare lo stato da riga di comando
+
+Lo stato è pubblico e si legge anche senza password:
+
+```bash
+curl -s https://corso-api-json.giuseppebosi.com/api/v1/interruttore
+```
+
+```json
+{ "attiva": false, "spegnimento_tra_s": 0, "minuti_di_inattivita": 60, "configurata": true }
+```
+
+E questo è ciò che risponde l'API quando è spenta:
+
+```json
+{
+  "error": {
+    "code": "api_spenta",
+    "message": "API di prova spenta: attivala da https://corso-api-json.giuseppebosi.com/api-attiva/",
+    "details": {
+      "attiva_da": "https://corso-api-json.giuseppebosi.com/api-attiva/",
+      "stato": "/api/v1/interruttore"
+    }
+  }
+}
+```

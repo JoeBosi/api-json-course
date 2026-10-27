@@ -1,0 +1,13 @@
+---
+/**
+ * Un comando curl spiegato opzione per opzione.
+ * Props: cmd (stringa, può contenere \n), spiega: array di [token, spiegazione].
+ */
+import { Code } from '@astrojs/starlight/components';
+interface Props { cmd: string; spiega?: [string, string][]; titolo?: string; }
+const { cmd, spiega = [], titolo } = Astro.props;
+---
+<div class="curl">
+  <Code code={cmd} lang="bash" title={titolo ?? 'terminale'} />
+  {spiega.length > 0 && <dl>{spiega.map(([t, s]) => <><dt>{t}</dt><dd set:html={s} /></>)}</dl>}
+</div>

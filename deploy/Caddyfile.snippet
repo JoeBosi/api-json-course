@@ -1,0 +1,34 @@
+# corso-api-json — Corso JSON & API. Un solo servizio systemd (corso-api-json, 127.0.0.1:8795)
+# serve /api/* (FastAPI) e il sito statico site/dist DENTRO il progetto: nessun file fuori
+# dalla cartella (Caddy gira come utente `caddy` e non legge sotto /root).
+# Niente CSP: Starlight usa script inline per tema e ricerca, Swagger UI (/api/docs) carica da CDN.
+corso-api-json.giuseppebosi.com {
+    basic_auth {
+        giuseppe REDACTED_BCRYPT_HASH
+    }
+    encode zstd gzip {
+        match {
+            header Content-Type text/*
+            header Content-Type application/json*
+            header Content-Type application/x-ndjson*
+            header Content-Type application/javascript*
+            header Content-Type image/svg+xml*
+        }
+    }
+    request_body {
+        max_size 1MB
+    }
+    reverse_proxy 127.0.0.1:8795 {
+        header_up X-Real-IP {remote_host}
+    }
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        -Server
+    }
+    log {
+        output discard
+    }
+}

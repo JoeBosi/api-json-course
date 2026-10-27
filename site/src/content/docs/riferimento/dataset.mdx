@@ -1,0 +1,119 @@
+---
+title: "Il dataset: Libreria Aurora"
+description: "Tabelle, colonne, chiavi primarie ed esterne, relazioni e conteggi del database di prova. Tutti i dati sono inventati."
+---
+import Prova from '../../../components/Prova.astro';
+
+Il server di prova espone il catalogo di una libreria online **inventata**, la Libreria Aurora. Titoli, autori, clienti e recensioni sono generati da un programma deterministico (`api/app/seed.py`): nessun dato reale, e ogni sandbox parte sempre dagli stessi numeri.
+
+## Le relazioni in un colpo d'occhio
+
+```text
+ authors ──< books >── categories ──┐ (parent_id: una categoria
+    1     N        N      1         │  può avere una categoria madre)
+                   │                └──────────────────────────────┘
+                   │  N
+               book_tags >── tags            (N-N: un libro ha più tag, un tag più libri)
+                   │
+                   │  1
+   customers ──< orders ──< order_items >── books
+       1      N    1     N            N   1  (N-N ordini↔libri, con quantità e prezzo)
+       │
+       └──< reviews >── books                (un cliente recensisce più libri)
+```
+
+`──<` si legge "uno a molti": un autore ha molti libri; ogni libro ha **un** autore (la FK `books.author_id`).
+
+## Tabelle
+
+Conteggi del dataset pubblico (in una sandbox cambiano con le tue scritture). Le informazioni su chiavi e vincoli sono quelle restituite da `GET /api/v1/schema`.
+
+### `authors` — 20 righe
+| Colonna | Tipo | Note |
+|---|---|---|
+| `id` | INTEGER | **PK** |
+| `name` | TEXT | not null |
+| `country` | TEXT | codice ISO a 2 lettere (IT, ES, NO, …) |
+| `born_year` | INTEGER | |
+| `bio` | TEXT | |
+
+### `categories` — 10 righe
+| Colonna | Tipo | Note |
+|---|---|---|
+| `id` | INTEGER | **PK** |
+| `name` | TEXT | |
+| `slug` | TEXT | `UNIQUE`; usato negli URL (`/categories/gialli/books`) |
+| `parent_id` | INTEGER | **FK → categories.id** (gerarchia a 2 livelli: Narrativa → Gialli, Fantascienza, Storici; Saggistica → Storia, Scienza, Informatica) |
+
+### `books` — 80 righe
+| Colonna | Tipo | Note |
+|---|---|---|
+| `id` | INTEGER | **PK** |
+| `title` | TEXT | not null; indicizzato anche nella tabella full-text `books_fts` |
+| `isbn` | TEXT | `UNIQUE` |
+| `author_id` | INTEGER | **FK → authors.id**, indice `idx_books_author` |
+| `category_id` | INTEGER | **FK → categories.id**, indice `idx_books_category` |
+| `price` | REAL | `CHECK(price >= 0)`, indice `idx_books_price` |
+| `pages`, `published_year` | INTEGER | |
+| `language` | TEXT | `it` (maggioranza), `en`, `es` |
+| `in_stock` | INTEGER | 0/1, esposto come booleano |
+| `attributes` | TEXT (JSON) | `{"format": "brossura|rilegato|tascabile", "cover": "morbida|rigida", "awards": [...], "dimensions_cm": {"w", "h"}, "ebook": true|false, "edition"?: n}` |
+| `created_at` | TEXT | ISO 8601 UTC (`2024-08-12T00:00:00Z`) |
+
+### `tags` (10) e `book_tags` (126)
+`tags(id PK, name UNIQUE)`; `book_tags(book_id FK → books.id, tag_id FK → tags.id)` con **chiave primaria composta** `(book_id, tag_id)` e `ON DELETE CASCADE` su entrambe le FK. Tag: bestseller, novità, premio, classico, illustrato, serie, esordio, tascabile, audiolibro, tradotto.
+
+### `customers` — 40 righe
+| Colonna | Tipo | Note |
+|---|---|---|
+| `id` | INTEGER | **PK** |
+| `name` | TEXT | |
+| `email` | TEXT | `UNIQUE`, dominio `example.com` |
+| `city` | TEXT | dieci città italiane |
+| `created_at` | TEXT | ISO 8601 |
+
+### `orders` — 120 righe
+| Colonna | Tipo | Note |
+|---|---|---|
+| `id` | INTEGER | **PK** |
+| `customer_id` | INTEGER | **FK → customers.id**, indice |
+| `status` | TEXT | `CHECK` in `pending, paid, shipped, delivered, cancelled`; transizioni: pending → paid → shipped → delivered; cancelled da pending o paid |
+| `shipping_address` | TEXT (JSON) | `{"street", "city", "zip", "country"}` |
+| `total` | REAL | somma di `quantity × unit_price` delle righe |
+| `created_at` | TEXT | ISO 8601 |
+
+### `order_items` — 305 righe
+| Colonna | Tipo | Note |
+|---|---|---|
+| `id` | INTEGER | **PK** |
+| `order_id` | INTEGER | **FK → orders.id**, `ON DELETE CASCADE` |
+| `book_id` | INTEGER | **FK → books.id** (un libro presente qui non si può cancellare: `409 book_in_orders`) |
+| `quantity` | INTEGER | `CHECK(quantity > 0)` |
+| `unit_price` | REAL | prezzo al momento dell'ordine (copiato da `books.price`) |
+
+### `reviews` — 243 righe
+| Colonna | Tipo | Note |
+|---|---|---|
+| `id` | INTEGER | **PK** |
+| `book_id` | INTEGER | **FK → books.id**, `ON DELETE CASCADE`, indice |
+| `customer_id` | INTEGER | **FK → customers.id** |
+| `rating` | INTEGER | `CHECK(rating BETWEEN 1 AND 5)` |
+| `comment` | TEXT | |
+| `created_at` | TEXT | ISO 8601 |
+
+### Oggetti derivati
+- **Vista `book_stats`** (`book_id`, `reviews_count`, `avg_rating`): recensioni e media per libro; è ciò che aggiunge `reviews_count` e `avg_rating` alle risposte di `/books`.
+- **Tabella full-text `books_fts`** (FTS5 su titolo e descrizione): alimenta `GET /search`.
+
+## Numeri utili per gli esercizi
+
+- Prezzi: min 7,13 €, media 19,90 €, max 34,49 €.
+- Categorie con più libri: Saggistica (14), Ragazzi (12), Cucina (9).
+- Autore con più libri: Matteo Rinaldi (8).
+- Ordini per stato: delivered 48, paid 26, cancelled 18, shipped 16, pending 12.
+- Città con più incasso: Torino (1715,02 €), Padova, Firenze.
+
+## Guardalo dal vivo
+
+<Prova path="/api/v1/schema" titolo="schema con PK, FK e conteggi" />
+<Prova path="/api/v1/categories?tree=true" titolo="l'albero delle categorie" />

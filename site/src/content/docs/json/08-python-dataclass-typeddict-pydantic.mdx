@@ -1,0 +1,249 @@
+---
+title: "8. Python: dataclass, TypedDict, pydantic"
+description: "Dare una forma ai dict che escono da json.loads: dataclass e asdict, TypedDict per il type checker, pydantic v2 (BaseModel, model_validate, model_dump, Field, alias, ValidationError, modelli annidati) e quando usare cosa."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+
+## Obiettivi
+
+- Passare da `dict` "anonimi" a oggetti con nome, campi e tipi.
+- Conoscere i tre strumenti e i loro compromessi: `dataclass` (struttura), `TypedDict` (solo tipi statici), `pydantic` (tipi + validazione + serializzazione).
+- Con pydantic v2: `model_validate`, `model_dump`, `model_dump_json`, `Field`, alias, `ValidationError`, modelli annidati (libro + autore).
+- Scegliere lo strumento giusto per il caso.
+
+## Teoria
+
+`json.loads` restituisce `dict` e `list`: funziona, ma `libro["titolo"]` (chiave sbagliata) esplode solo a runtime, l'editor non aiuta, e non c'è nessuna garanzia che `price` sia davvero un numero. Tre livelli di rimedio:
+
+| Strumento | Cosa dà | Validazione a runtime | Dipendenze |
+|---|---|---|---|
+| `@dataclass` | classe con campi, `__init__`, `__eq__`, `asdict()` | **no** (`Book(price="x")` passa) | stdlib |
+| `TypedDict` | un `dict` con chiavi e tipi noti **al type checker** | **no** (a runtime è un dict normale) | stdlib |
+| `pydantic.BaseModel` | classe + **validazione** + conversione + serializzazione JSON | **sì**, con errori dettagliati | `pip install pydantic` |
+
+### `dataclass`
+
+Ottima per dati che **costruisci tu**. Per i dati che arrivano da fuori serve `Book(**d)`, che fallisce se il dict ha chiavi in più (`TypeError: unexpected keyword`) e non controlla i tipi. `dataclasses.asdict()` fa il contrario, ricorsivamente.
+
+### `TypedDict`
+
+Non crea una classe: dice a mypy/pyright "questo dict ha queste chiavi con questi tipi". Costo zero a runtime, ideale per annotare le risposte di un'API quando ti basta l'autocompletamento. `total=False` o `NotRequired[...]` per le chiavi opzionali.
+
+### pydantic v2
+
+È lo "zod di Python" (capitolo 7). Definisci una classe con annotazioni; `Book.model_validate(dict)` valida **e converte** (`"7"` → `7` in modalità *lax*, oppure rifiuta in modalità *strict*), `Book.model_validate_json(testo)` parte direttamente dalla stringa JSON (più veloce, parser in Rust). In uscita: `model_dump()` → dict, `model_dump_json()` → stringa. `Field(...)` aggiunge vincoli (`ge=0`, `min_length=1`, `alias="…"`), e i modelli si **annidano** naturalmente: un `Book` con dentro un `Author`.
+
+<Aside type="tip" title="La stessa classe è tipo e schema">
+Con pydantic non c'è un `z.infer`: la classe `Book` **è** il tipo statico per l'editor e lo schema di validazione a runtime. E `Book.model_json_schema()` produce il JSON Schema (capitolo 9): è così che FastAPI genera la documentazione che vedi su `/api/docs`.
+</Aside>
+
+## curl, spiegato: libro con autore, e un cliente
+
+<Curl cmd={`curl -s 'https://corso-api-json.giuseppebosi.com/api/v1/books/7?expand=author' | jq '{title, price, author: .author.name}'`} spiega={[
+  ['?expand=author', 'chiede il libro <em>con</em> l&#39;autore annidato: è l&#39;occasione per un modello dentro l&#39;altro'],
+  ["jq '{title, price, author: .author.name}'", 'nuovo oggetto: <code>title</code> e <code>price</code> presi così come sono; <code>author</code> ridefinito come il campo <code>name</code> dell&#39;oggetto annidato'],
+]} />
+
+```json
+{
+  "title": "Oltre Trieste",
+  "price": 28.25,
+  "author": "Davide Moretti"
+}
+```
+
+E un cliente, che useremo per l'esercizio:
+
+```json
+{"id":1,"name":"Elisa Bruno","email":"elisa.bruno1@example.com","city":"Roma","created_at":"2025-01-07T00:00:00Z","orders_summary":{"orders_count":1,"total_spent":93.14,"last_order_at":"2024-02-17T16:00:00Z"}}
+```
+
+<Prova path="/api/v1/customers/1" titolo="cliente 1 con il riepilogo ordini" />
+
+## Python: tre strumenti a confronto
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx pydantic
+# python3 modelli.py
+from dataclasses import dataclass, asdict, field
+from datetime import datetime
+from typing import Any, NotRequired, TypedDict
+import httpx
+from pydantic import BaseModel, Field, ValidationError, field_validator
+
+BASE = "https://corso-api-json.giuseppebosi.com/api/v1"
+grezzo: dict[str, Any] = httpx.get(f"{BASE}/books/7", params={"expand": "author"}).json()
+
+# --- 1. dataclass: struttura, niente validazione --------------------------------------------
+@dataclass
+class BookDC:
+    id: int
+    title: str
+    price: float
+    in_stock: bool
+    tags: list[str] = field(default_factory=list)
+
+campi = {k: grezzo[k] for k in ("id", "title", "price", "in_stock")}   # BookDC(**grezzo) fallirebbe: chiavi in più
+libro_dc = BookDC(**campi)
+print(libro_dc)                            # BookDC(id=7, title='Oltre Trieste', price=28.25, in_stock=False, tags=[])
+print(asdict(libro_dc)["title"])           # Oltre Trieste
+print(BookDC(id="7", title=1, price="x", in_stock="no"))   # passa! nessun controllo a runtime
+
+# --- 2. TypedDict: solo per il type checker ---------------------------------------------------
+class AuthorTD(TypedDict):
+    id: int
+    name: str
+    country: str
+
+class BookTD(TypedDict):
+    id: int
+    title: str
+    price: float
+    author: NotRequired[AuthorTD]          # presente solo con ?expand=author
+
+libro_td: BookTD = grezzo                  # a runtime è lo stesso dict; l'editor ora conosce le chiavi
+print(libro_td["author"]["name"])          # Davide Moretti  (autocompletamento su "author" e "name")
+
+# --- 3. pydantic v2: tipi + validazione + serializzazione ------------------------------------
+class Author(BaseModel):
+    id: int
+    name: str
+    country: str = Field(min_length=2, max_length=2)
+    born_year: int | None = None
+
+class Book(BaseModel):
+    id: int = Field(gt=0)
+    title: str = Field(min_length=1)
+    price: float = Field(ge=0)
+    in_stock: bool
+    pages: int | None = None
+    created_at: datetime                   # la stringa ISO diventa datetime automaticamente
+    attributes: dict[str, Any] = {}
+    author: Author | None = None           # modello annidato, opzionale
+
+    @field_validator("title")
+    @classmethod
+    def titolo_pulito(cls, v: str) -> str:
+        return v.strip()
+
+libro = Book.model_validate(grezzo)        # ignora i campi extra (default), valida gli altri
+print(libro.title, libro.created_at.year, libro.author.name if libro.author else None)   # Oltre Trieste 2024 Davide Moretti
+print(type(libro.created_at).__name__)     # datetime
+
+# conversione "lax": stringhe numeriche accettate, tipi incompatibili no
+print(Book.model_validate({**grezzo, "price": "28.25"}).price)   # 28.25
+try:
+    Book.model_validate({**grezzo, "price": -1, "in_stock": "forse", "title": ""})
+except ValidationError as e:
+    for err in e.errors():
+        print(err["loc"], err["msg"])
+    # ('title',) String should have at least 1 character
+    # ('price',) Input should be greater than or equal to 0
+    # ('in_stock',) Input should be a valid boolean, unable to interpret input
+
+# in uscita: dict o JSON, con controllo di cosa includere
+print(libro.model_dump(include={"id", "title", "price"}))          # {'id': 7, 'title': 'Oltre Trieste', 'price': 28.25}
+print(libro.model_dump_json(exclude={"attributes", "author"}))     # {"id":7,"title":"Oltre Trieste",...,"created_at":"2024-11-27T00:00:00Z",...}
+
+# dalla stringa JSON direttamente (parser veloce) e alias per chiavi "scomode"
+class Riepilogo(BaseModel):
+    ordini: int = Field(alias="orders_count")
+    speso: float = Field(alias="total_spent")
+
+class Customer(BaseModel):
+    id: int
+    name: str
+    email: str
+    riepilogo: Riepilogo = Field(alias="orders_summary")
+
+cliente = Customer.model_validate_json(httpx.get(f"{BASE}/customers/1").text)
+print(cliente.name, cliente.riepilogo.ordini, cliente.riepilogo.speso)   # Elisa Bruno 1 93.14
+print(cliente.model_dump(by_alias=True)["orders_summary"])                # {'orders_count': 1, 'total_spent': 93.14}
+```
+</TabItem>
+<TabItem label="TypeScript">
+Le corrispondenze con il capitolo 7:
+
+```ts
+// @dataclass          -> class con campi (nessuna validazione)
+// TypedDict           -> interface / type (solo statico)
+// pydantic BaseModel  -> schema zod: z.object(...)
+// model_validate(d)   -> Schema.parse(d)        (lancia)
+// try/except ValidationError -> Schema.safeParse(d)
+// model_dump_json()   -> JSON.stringify(dato)
+// Field(alias=...)    -> z.object({...}).transform(...) o rinomina a mano
+```
+</TabItem>
+</Tabs>
+
+### Quale scegliere
+
+- **Dati che crei e controlli tu**, senza I/O: `dataclass`.
+- **Solo annotare** dict che arrivano da un'API di cui ti fidi, zero dipendenze: `TypedDict`.
+- **Dati che arrivano da fuori** (API, file, input utente), o che devi validare/documentare/serializzare: **pydantic**. È anche ciò che usa FastAPI lato server.
+
+## Esercizio
+
+Modella la risposta di `/api/v1/orders/1?expand=items.book,customer` con pydantic: `Order` con `shipping_address: Address`, `items: list[OrderItem]` dove ogni riga ha `book: BookMini` (`id`, `title`, `price`, `author_name`), e `customer: CustomerMini`. Aggiungi un validatore che rifiuti `zip` non di 5 cifre. Poi stampa `model_dump_json(indent=2)` solo dei campi `id`, `status`, `total`.
+
+<details>
+<summary>Soluzione</summary>
+
+```python
+from datetime import datetime
+from typing import Literal
+import httpx
+from pydantic import BaseModel, Field
+
+class Address(BaseModel):
+    street: str
+    city: str
+    zip: str = Field(pattern=r"^\d{5}$")
+    country: str = Field(min_length=2, max_length=2)
+
+class BookMini(BaseModel):
+    id: int
+    title: str
+    price: float
+    author_name: str
+
+class OrderItem(BaseModel):
+    book_id: int
+    quantity: int = Field(gt=0)
+    unit_price: float
+    book: BookMini
+
+class CustomerMini(BaseModel):
+    id: int
+    name: str
+    email: str
+
+class Order(BaseModel):
+    id: int
+    status: Literal["pending", "paid", "shipped", "delivered", "cancelled"]
+    total: float
+    created_at: datetime
+    shipping_address: Address
+    items: list[OrderItem]
+    customer: CustomerMini
+
+o = Order.model_validate_json(httpx.get("https://corso-api-json.giuseppebosi.com/api/v1/orders/1", params={"expand": "items.book,customer"}).text)
+print(o.items[0].book.author_name)                              # Pietro Galli
+print(o.model_dump_json(include={"id", "status", "total"}, indent=2))
+```
+</details>
+
+## Errori comuni
+
+- `Book(**dict_dell_api)` con una dataclass: esplode alla prima chiave in più. Le dataclass non sono fatte per i dati esterni.
+- Aspettarsi che `TypedDict` controlli qualcosa a runtime: non lo fa, è solo per l'editor.
+- pydantic: dimenticare che il default è **lax** (`"7"` → `7`). Se vuoi rigore, `model_config = ConfigDict(strict=True)`.
+- Chiamare `.dict()` / `.json()` / `parse_obj()`: erano pydantic **v1**. In v2 sono `model_dump()`, `model_dump_json()`, `model_validate()`.
+
+## In sintesi
+
+`dataclass` per strutturare, `TypedDict` per annotare, pydantic per validare e serializzare i dati che arrivano da fuori. Nel prossimo capitolo il linguaggio con cui si descrivono le forme in modo indipendente dal linguaggio: **JSON Schema**.

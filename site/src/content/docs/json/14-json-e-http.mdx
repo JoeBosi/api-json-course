@@ -1,0 +1,260 @@
+---
+title: "14. JSON e HTTP"
+description: "Come JSON viaggia in una richiesta e in una risposta HTTP: Content-Type e charset, body in POST, il formato degli errori, 422 con dettagli, 204 senza corpo e JSON dentro la query string."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+import Curl from '../../../components/Curl.astro';
+
+## Obiettivi
+
+- Riconoscere gli header che governano JSON in HTTP: `Content-Type`, `Accept`, `Content-Length`, `Location`.
+- Inviare JSON in un body `POST` e leggere una risposta di errore strutturata.
+- Distinguere 200/201/204/400/422 e sapere cosa contengono (o non contengono).
+- Passare JSON in una query string senza romperlo (URL encoding).
+
+## Teoria
+
+Un messaggio HTTP ha **riga di stato/richiesta**, **header** e un **body** opzionale. JSON vive nel body; gli header dicono come interpretarlo.
+
+| Header | Nella richiesta | Nella risposta |
+|---|---|---|
+| `Content-Type: application/json` | "il body che ti mando è JSON" (obbligatorio per POST/PUT/PATCH) | "il body che ti restituisco è JSON" |
+| `Accept: application/json` | "voglio JSON in risposta" (content negotiation) | — |
+| `Content-Length` / `Transfer-Encoding: chunked` | lunghezza del body, o invio a pezzi | idem |
+| `Location` | — | nelle 201: URL della risorsa appena creata |
+
+Sul **charset**: RFC 8259 impone UTF-8 e dice che `application/json` non ha un parametro `charset`; lo vedrai comunque (`application/json; charset=utf-8`) ed è innocuo.
+
+### Status code e corpo
+
+- **200 OK** — corpo JSON con la risorsa o la lista.
+- **201 Created** — creazione riuscita; corpo con la risorsa creata e header `Location`.
+- **204 No Content** — riuscito, **nessun corpo** (tipico di `DELETE`). Fare `r.json()` qui è un errore.
+- **400 Bad Request** — richiesta malformata (parametro sconosciuto, `expand` non valido…).
+- **422 Unprocessable Content** — sintassi ok ma dati non validi: il server dice *quale campo* e *perché*.
+- **401 / 404 / 409 / 429** — li vedrai nella Sezione 2, capitolo 7.
+
+### Il formato degli errori
+
+Un'API seria risponde agli errori **sempre con la stessa forma**, così il client la gestisce in un solo punto. Questa API usa:
+
+```json
+{ "error": { "code": "validation_error", "message": "…", "details": [ … ] } }
+```
+
+`code` è per il programma (stabile, confrontabile), `message` per l'umano, `details` opzionale con i particolari.
+
+## curl, spiegato
+
+Prima uno sguardo agli header di una risposta JSON:
+
+<Curl cmd={`curl -si https://corso-api-json.giuseppebosi.com/api/v1/books/1 | head -8`} spiega={[
+  ['-i', "<em>include</em>: stampa anche gli header della risposta prima del corpo"],
+  ['head -8', "solo le prime 8 righe: riga di stato + header"],
+]} />
+
+```
+HTTP/1.1 200 OK
+content-type: application/json
+content-length: 362
+etag: "fd261646a574ca77"
+cache-control: public, max-age=60
+x-request-id: c67b48c823ac
+```
+
+Ora un `POST` con body **volutamente sbagliato**, per vedere un 422. Le scritture richiedono una sandbox: il token si ottiene con `POST /api/v1/sandbox` (dettagli nella Sezione 2, capitolo 6).
+
+<Curl cmd={`TOKEN=$(curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/sandbox | jq -r .token)
+
+curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/books \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H 'Content-Type: application/json' \\
+  -d '{"title": "", "author_id": "uno", "price": -3}' | jq .`} spiega={[
+  ['TOKEN=$( … )', "esegue il comando tra parentesi e mette il suo output nella variabile"],
+  ['jq -r .token', "estrae il campo <code>token</code> come testo grezzo (senza virgolette)"],
+  ['-X POST', "metodo POST"],
+  ['-H "Authorization: Bearer $TOKEN"', "header di autenticazione; tra <strong>doppi</strong> apici perché <code>$TOKEN</code> deve essere espanso"],
+  ["-H 'Content-Type: application/json'", "dice al server come leggere il body"],
+  ["-d '…'", "il body JSON; tra apici singoli così le virgolette doppie restano"],
+]} />
+
+```json
+{
+  "error": {
+    "code": "validation_error",
+    "message": "Richiesta non valida: controlla i campi in details",
+    "details": [
+      { "loc": ["body", "title"], "msg": "String should have at least 1 character", "type": "string_too_short" },
+      { "loc": ["body", "author_id"], "msg": "Input should be a valid integer, unable to parse string as an integer", "type": "int_parsing" },
+      { "loc": ["body", "category_id"], "msg": "Field required", "type": "missing" },
+      { "loc": ["body", "price"], "msg": "Input should be greater than or equal to 0", "type": "greater_than_equal" }
+    ]
+  }
+}
+```
+
+Quattro errori in una sola risposta, ognuno con il **percorso** del campo (`loc`). E se il body non è nemmeno JSON valido (virgola finale)?
+
+```bash
+curl -s -X POST …/api/v1/books -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"title": "x",}'
+# {"error":{"code":"validation_error","message":"…","details":[{"loc":["body",14],"msg":"JSON decode error","type":"json_invalid"}]}}
+```
+
+`loc: ["body", 14]`: l'errore è al carattere 14 del body. Infine una creazione riuscita e una cancellazione:
+
+<Curl cmd={`curl -si -X POST https://corso-api-json.giuseppebosi.com/api/v1/books \\
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \\
+  -d '{"title":"Prova JSON","author_id":1,"category_id":9,"price":9.9,"attributes":{"format":"tascabile"}}' \\
+  | grep -iE '^(HTTP|content-type|location)'
+
+curl -si -X DELETE "https://corso-api-json.giuseppebosi.com/api/v1/books/81" -H "Authorization: Bearer $TOKEN" | head -1`} spiega={[
+  ["grep -iE '^(HTTP|content-type|location)'", "filtra le righe che iniziano con uno di quei tre nomi (<code>-i</code> ignora maiuscole, <code>-E</code> regex estesa)"],
+  ['-X DELETE', "metodo DELETE sulla risorsa creata (l'id 81 è quello restituito dal POST nella sandbox)"],
+]} />
+
+```
+HTTP/1.1 201 Created
+content-type: application/json
+location: https://corso-api-json.giuseppebosi.com/api/v1/books/81
+
+HTTP/1.1 204 No Content
+```
+
+### JSON nella query string
+
+A volte serve passare una struttura in un `GET`. Va **URL-encoded**: `{`, `"`, spazi e caratteri non ASCII non possono stare nudi in un URL.
+
+<Curl cmd={`curl -s -G https://corso-api-json.giuseppebosi.com/api/v1/echo \\
+  --data-urlencode 'filtro={"città":"Roma","max":10}' | jq .query`} spiega={[
+  ['-G', "manda i dati di <code>-d</code>/<code>--data-urlencode</code> nella <strong>query string</strong> di una GET invece che nel body"],
+  ["--data-urlencode 'k=v'", "codifica il valore per l'URL: <code>{</code> → <code>%7B</code>, <code>&quot;</code> → <code>%22</code>, <code>à</code> → <code>%C3%A0</code>"],
+  ['/echo', "endpoint didattico che rimanda ciò che riceve"],
+]} />
+
+```json
+{ "filtro": "{\"città\":\"Roma\",\"max\":10}" }
+```
+
+Il server ha ricevuto la stringa intatta; sta a lui farne `json.loads`. Per strutture non banali, però, preferisci un `POST` con body JSON (come `/query`): più leggibile, nessun limite di lunghezza dell'URL.
+
+## Python e TypeScript
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+import json, httpx
+BASE = "https://corso-api-json.giuseppebosi.com/api/v1"
+
+token = httpx.post(f"{BASE}/sandbox").json()["token"]
+auth = {"Authorization": f"Bearer {token}"}
+
+# json= serializza il dict e imposta Content-Type: application/json da solo
+r = httpx.post(f"{BASE}/books", json={"title": "", "author_id": "uno", "price": -3}, headers=auth)
+print(r.status_code, r.headers["content-type"])            # 422 application/json
+for d in r.json()["error"]["details"]:
+    print("/".join(map(str, d["loc"])), "→", d["msg"])
+
+# creazione: 201 + Location
+r = httpx.post(f"{BASE}/books", headers=auth,
+               json={"title": "Prova JSON", "author_id": 1, "category_id": 9, "price": 9.9, "attributes": {"format": "tascabile"}})
+print(r.status_code, r.headers["location"])                # 201 https://…/api/v1/books/81
+nuovo = r.json()
+
+# 204: nessun corpo. r.json() qui solleverebbe JSONDecodeError
+r = httpx.delete(f"{BASE}/books/{nuovo['id']}", headers=auth)
+print(r.status_code, repr(r.text))                         # 204 ''
+
+# JSON nella query string: httpx codifica i params per te (ensure_ascii=False tiene la à leggibile)
+r = httpx.get(f"{BASE}/echo", params={"filtro": json.dumps({"città": "Roma", "max": 10}, ensure_ascii=False)})
+print(r.url)          # …/echo?filtro=%7B%22citt%C3%A0%22%3A+%22Roma%22%2C+%22max%22%3A+10%7D
+print(r.json()["query"])                                   # {'filtro': '{"città": "Roma", "max": 10}'}
+
+# l'errore classico: data= invia un form, non JSON
+r = httpx.post(f"{BASE}/books", data={"title": "x"}, headers=auth)
+print(r.json()["error"]["details"][0]["msg"])              # Input should be a valid dictionary or object to extract fields from
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types http.ts
+const BASE = "https://corso-api-json.giuseppebosi.com/api/v1";
+const { token } = await (await fetch(`${BASE}/sandbox`, { method: "POST" })).json();
+const auth = { Authorization: `Bearer ${token}` };
+
+// fetch NON imposta Content-Type per te: va dichiarato, e il body va serializzato a mano
+let r = await fetch(`${BASE}/books`, {
+  method: "POST", headers: { ...auth, "Content-Type": "application/json" },
+  body: JSON.stringify({ title: "", author_id: "uno", price: -3 }),
+});
+console.log(r.status, r.headers.get("content-type"));      // 422 application/json
+const err = await r.json();
+for (const d of err.error.details) console.log(d.loc.join("/"), "→", d.msg);
+
+// 201 + Location
+r = await fetch(`${BASE}/books`, {
+  method: "POST", headers: { ...auth, "Content-Type": "application/json" },
+  body: JSON.stringify({ title: "Prova JSON", author_id: 1, category_id: 9, price: 9.9, attributes: { format: "tascabile" } }),
+});
+console.log(r.status, r.headers.get("location"));
+const nuovo = await r.json();
+
+// 204: niente corpo → non chiamare r.json()
+r = await fetch(`${BASE}/books/${nuovo.id}`, { method: "DELETE", headers: auth });
+console.log(r.status, JSON.stringify(await r.text()));    // 204 ""
+
+// JSON nella query string con URLSearchParams (fa l'encoding)
+const qs = new URLSearchParams({ filtro: JSON.stringify({ città: "Roma", max: 10 }) });
+console.log(qs.toString());              // filtro=%7B%22citt%C3%A0%22%3A%22Roma%22%2C%22max%22%3A10%7D
+r = await fetch(`${BASE}/echo?${qs}`);
+console.log((await r.json()).query);     // { filtro: '{"città":"Roma","max":10}' }
+
+// l'errore classico: body senza Content-Type
+r = await fetch(`${BASE}/books`, { method: "POST", headers: auth, body: JSON.stringify({ title: "x" }) });
+console.log(r.status, (await r.json()).error.details[0].msg);   // 422 Input should be a valid dictionary or object…
+```
+Dimenticare `"Content-Type": "application/json"` con `fetch` è l'errore più frequente in assoluto: il server riceve una stringa senza sapere che è JSON e risponde 422.
+</TabItem>
+</Tabs>
+
+<Aside type="tip" title="Un client che non sbaglia mai 204">
+Scrivi una funzione che fa `return r.status === 204 ? null : await r.json()` (o in Python `None if r.status_code == 204 else r.json()`) e usala ovunque: sparisce una classe intera di bug.
+</Aside>
+
+## Prova subito
+
+<Prova path="/api/v1/echo?a=1&b=due" method="POST" body={{ "ciao": "mondo", "n": [1, 2, 3] }} titolo="l'echo: guarda headers.content-type e json nella risposta" />
+
+<Prova method="POST" path="/api/v1/books" body={{ "title": "", "author_id": "uno", "price": -3 }} sandbox titolo="un 422 con quattro errori (serve la sandbox)" />
+
+<Prova method="POST" path="/api/v1/books" body={{ "title": "Il mio libro", "author_id": 3, "category_id": 1, "price": 12.5, "attributes": { "format": "brossura", "ebook": true } }} sandbox titolo="un 201: guarda l'header Location" />
+
+## Esercizio
+
+Con `/echo` (accetta GET, POST e PUT), verifica sperimentalmente:
+
+1. Cosa contiene `json` nella risposta se mandi un body con `Content-Type: text/plain`?
+2. Cosa succede all'header `Content-Length` se mandi un body vuoto con `-X POST`?
+3. Manda un body con caratteri accentati e emoji e controlla che tornino intatti.
+
+<details>
+<summary>Soluzione</summary>
+
+```bash
+curl -s -X POST …/api/v1/echo -H 'Content-Type: text/plain' -d '{"a":1}' | jq .json      # 1
+curl -s -X POST …/api/v1/echo -H 'Content-Length: 0' | jq '.headers["content-length"]'     # 2
+curl -s -X POST …/api/v1/echo -H 'Content-Type: application/json' -d '{"s":"caffè ☕"}' | jq .json  # 3
+```
+1. `/echo` è permissivo e prova comunque a fare il parsing: ottieni `{"a": 1}`. Un endpoint normale (come `/books`) invece rifiuterebbe con 422. 2. `"0"`. 3. Torna `{"s": "caffè ☕"}`: JSON è UTF-8 end-to-end.
+</details>
+
+## Errori comuni
+
+- **`fetch` senza `Content-Type`** (vedi sopra) e, specularmente, **`httpx.post(data=...)`** invece di `json=...`.
+- **`r.json()` su un 204** o su una risposta di errore HTML (proxy, pagina di manutenzione): controlla prima `content-type`.
+- **Trattare 4xx come eccezioni "generiche"**: leggi `error.code`, è lì per essere confrontato.
+- **JSON nell'URL senza encoding**: lo spazio e `"` spezzano l'URL; `--data-urlencode`, `params=`, `URLSearchParams` esistono per questo.
+
+## In sintesi
+
+Il body porta il JSON, gli header dicono cos'è, lo status dice com'è andata, e gli errori hanno una forma fissa che il client sfrutta. Ultimo capitolo della sezione: mettere tutto insieme in un progetto.
