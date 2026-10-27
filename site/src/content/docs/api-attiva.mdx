@@ -15,11 +15,11 @@ non ha senso.
 ## Come funziona
 
 - Con l'API spenta ogni chiamata risponde **503** con un messaggio che rimanda a questa pagina:
-  i capitoli si leggono lo stesso, ma i widget «Prova» e gli esempi `curl` non rispondono.
+   i capitoli si leggono lo stesso, ma i widget «Prova» e gli esempi `curl` non rispondono.
 - Una volta accesa resta attiva finché la si usa, e **si spegne da sola dopo un'ora** senza
-  chiamate. Non serve spegnerla a mano.
+   chiamate. Non serve spegnerla a mano.
 - Chi ha la password può riaccenderla quando vuole. I tentativi sbagliati sono limitati
-  (cinque ogni quarto d'ora per indirizzo), per evitare che qualcuno la indovini provando.
+   (cinque ogni quarto d'ora per indirizzo), per evitare che qualcuno la indovini provando.
 
 :::note[Non hai la password?]
 La password serve solo per **accendere** il server di prova, non per leggere il corso: tutti i
@@ -43,13 +43,13 @@ E questo è ciò che risponde l'API quando è spenta:
 
 ```json
 {
-  "error": {
+   "error": {
     "code": "api_spenta",
     "message": "API di prova spenta: attivala da https://corso-api-json.giuseppebosi.com/api-attiva/",
     "details": {
       "attiva_da": "https://corso-api-json.giuseppebosi.com/api-attiva/",
       "stato": "/api/v1/interruttore"
     }
-  }
+   }
 }
 ```

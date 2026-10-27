@@ -100,6 +100,8 @@ const base = import.meta.env.PUBLIC_API_BASE ?? '';
 <style>
   .attiva { border: 1px solid var(--sl-color-gray-5); border-radius: .6rem; padding: 1rem; margin: 1rem 0; }
   .attiva__form { display: flex; flex-wrap: wrap; gap: .6rem; align-items: end; }
+  /* l'attributo hidden deve vincere sul display: flex qui sopra */
+  .attiva [hidden] { display: none !important; }
   .attiva__form label { display: flex; flex-direction: column; gap: .25rem; font-size: .9rem; }
   .attiva__form input { padding: .4rem .6rem; border: 1px solid var(--sl-color-gray-5); border-radius: .4rem; min-width: 16rem; }
   .attiva__form button { padding: .45rem .9rem; border-radius: .4rem; cursor: pointer; }

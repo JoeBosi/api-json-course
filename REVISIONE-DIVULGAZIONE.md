@@ -1,7 +1,10 @@
 # Revisione del corso come opera di divulgazione pubblica
 
-Fatta il 27/10/2026, prima dell'apertura al pubblico. Solo lettura: **non ho cambiato niente**
-nel sito, nell'API o nella configurazione.
+Fatta il 27/10/2026. **Aggiornamento del 28/10/2026:** Giuseppe ha approvato le proposte e le
+9 correzioni della sezione 2 e le 5 diciture della sezione 3 **sono state applicate** (vedi
+`docs/JOURNAL.md`). Restano da decidere le voci marcate come "invecchiamento" e "rifiniture",
+che non erano nelle 9 approvate. Il sito **resta protetto da password**: l'apertura al pubblico
+è stata annullata, quindi i rischi della sezione 4 valgono per quando e se si aprirà.
 
 ---
 

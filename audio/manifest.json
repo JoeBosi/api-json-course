@@ -17274,62 +17274,35 @@
     },
     {
      "tipo": "li",
-     "dom": "Con l'API spenta ogni chiamata risponde 503 con un messaggio che rimanda a questa pagina:",
+     "dom": "Con l'API spenta ogni chiamata risponde 503 con un messaggio che rimanda a questa pagina: i capitoli si leggono lo stesso, ma i widget «Prova» e gli esempi curl non rispondono.",
      "id": "p2",
-     "voce": "Con l'a-pi-ai spenta ogni chiamata risponde 503 con un messaggio che rimanda a questa pagina:",
-     "t": "Con l'API spenta ogni chiamata risponde 503 con un messaggio che rimanda a questa pagina:",
-     "hash": "94a019ddb607",
-     "n": "conlapispentaognichiamatarisponde503conunmessaggiocherimandaaquestapagina"
+     "voce": "Con l'a-pi-ai spenta ogni chiamata risponde 503 con un messaggio che rimanda a questa pagina: i capitoli si leggono lo stesso, ma i widget «Prova» e gli esempi curl non rispondono.",
+     "t": "Con l'API spenta ogni chiamata risponde 503 con un messaggio che rimanda a questa pagina: i capitoli si leggono lo stesso, ma i widget «Prova» e gli esempi curl non rispondono.",
+     "hash": "95343aa03260",
+     "n": "conlapispentaognichiamatarisponde503conunmessaggiocherimandaaquestapaginaicapitolisileggonolostessomaiwidgetprovaegliesempicurlnonrispondono"
     },
     {
-     "tipo": "p",
-     "dom": "i capitoli si leggono lo stesso, ma i widget «Prova» e gli esempi curl non rispondono.",
+     "tipo": "li",
+     "dom": "Una volta accesa resta attiva finché la si usa, e si spegne da sola dopo un'ora senza chiamate. Non serve spegnerla a mano.",
      "id": "p3",
-     "voce": "i capitoli si leggono lo stesso, ma i widget «Prova» e gli esempi curl non rispondono.",
-     "t": "i capitoli si leggono lo stesso, ma i widget «Prova» e gli esempi curl non rispondono.",
-     "hash": "e518a998661d",
-     "n": "icapitolisileggonolostessomaiwidgetprovaegliesempicurlnonrispondono"
+     "voce": "Una volta accesa resta attiva finché la si usa, e si spegne da sola dopo un'ora senza chiamate. Non serve spegnerla a mano.",
+     "t": "Una volta accesa resta attiva finché la si usa, e si spegne da sola dopo un'ora senza chiamate. Non serve spegnerla a mano.",
+     "hash": "b2209588e821",
+     "n": "unavoltaaccesarestaattivafinchélasiusaesispegnedasoladopounorasenzachiamatenonservespegnerlaamano"
     },
     {
      "tipo": "li",
-     "dom": "Una volta accesa resta attiva finché la si usa, e si spegne da sola dopo un'ora senza",
+     "dom": "Chi ha la password può riaccenderla quando vuole. I tentativi sbagliati sono limitati (cinque ogni quarto d'ora per indirizzo), per evitare che qualcuno la indovini provando.",
      "id": "p4",
-     "voce": "Una volta accesa resta attiva finché la si usa, e si spegne da sola dopo un'ora senza",
-     "t": "Una volta accesa resta attiva finché la si usa, e si spegne da sola dopo un'ora senza",
-     "hash": "1e5975b8efc9",
-     "n": "unavoltaaccesarestaattivafinchélasiusaesispegnedasoladopounorasenza"
-    },
-    {
-     "tipo": "p",
-     "dom": "chiamate. Non serve spegnerla a mano.",
-     "id": "p5",
-     "voce": "chiamate. Non serve spegnerla a mano.",
-     "t": "chiamate. Non serve spegnerla a mano.",
-     "hash": "aa1d6d849c76",
-     "n": "chiamatenonservespegnerlaamano"
-    },
-    {
-     "tipo": "li",
-     "dom": "Chi ha la password può riaccenderla quando vuole. I tentativi sbagliati sono limitati",
-     "id": "p6",
-     "voce": "Chi ha la password può riaccenderla quando vuole. I tentativi sbagliati sono limitati",
-     "t": "Chi ha la password può riaccenderla quando vuole. I tentativi sbagliati sono limitati",
-     "hash": "4fca6d59157f",
-     "n": "chihalapasswordpuòriaccenderlaquandovuoleitentativisbagliatisonolimitati"
-    },
-    {
-     "tipo": "p",
-     "dom": "(cinque ogni quarto d'ora per indirizzo), per evitare che qualcuno la indovini provando.",
-     "id": "p7",
-     "voce": "(cinque ogni quarto d'ora per indirizzo), per evitare che qualcuno la indovini provando.",
-     "t": "(cinque ogni quarto d'ora per indirizzo), per evitare che qualcuno la indovini provando.",
-     "hash": "8010165923ed",
-     "n": "cinqueogniquartodoraperindirizzoperevitarechequalcunolaindoviniprovando"
+     "voce": "Chi ha la password può riaccenderla quando vuole. I tentativi sbagliati sono limitati (cinque ogni quarto d'ora per indirizzo), per evitare che qualcuno la indovini provando.",
+     "t": "Chi ha la password può riaccenderla quando vuole. I tentativi sbagliati sono limitati (cinque ogni quarto d'ora per indirizzo), per evitare che qualcuno la indovini provando.",
+     "hash": "5bd09f854082",
+     "n": "chihalapasswordpuòriaccenderlaquandovuoleitentativisbagliatisonolimitaticinqueogniquartodoraperindirizzoperevitarechequalcunolaindoviniprovando"
     },
     {
      "tipo": "p",
      "dom": "La password serve solo per accendere il server di prova, non per leggere il corso: tutti i capitoli, gli esempi e le spiegazioni sono liberamente accessibili. Se stai seguendo il corso e ti serve il server acceso, scrivi all'autore (il contatto è in fondo alla pagina).",
-     "id": "p8",
+     "id": "p5",
      "voce": "La password serve solo per accendere il server di prova, non per leggere il corso: tutti i capitoli, gli esempi e le spiegazioni sono liberamente accessibili. Se stai seguendo il corso e ti serve il server acceso, scrivi all'autore (il contatto è in fondo alla pagina).",
      "t": "La password serve solo per accendere il server di prova, non per leggere il corso: tutti i capitoli, gli esempi e le spiegazioni sono liberamente accessibili. Se stai seguendo il corso e ti serve il server acceso, scrivi all'autore (il contatto è in fondo alla pagina).",
      "hash": "1a73a0373b7b",
@@ -17338,7 +17311,7 @@
     {
      "tipo": "h2",
      "dom": "Verificare lo stato da riga di comando",
-     "id": "p9",
+     "id": "p6",
      "voce": "Verificare lo stato da riga di comando.",
      "t": "Verificare lo stato da riga di comando.",
      "hash": "0200b2b17f31",
@@ -17347,7 +17320,7 @@
     {
      "tipo": "p",
      "dom": "Lo stato è pubblico e si legge anche senza password:",
-     "id": "p10",
+     "id": "p7",
      "voce": "Lo stato è pubblico e si legge anche senza password:",
      "t": "Lo stato è pubblico e si legge anche senza password:",
      "hash": "19486dd5301f",
@@ -17356,7 +17329,7 @@
     {
      "tipo": "p",
      "dom": "E questo è ciò che risponde l'API quando è spenta:",
-     "id": "p11",
+     "id": "p8",
      "voce": "E questo è ciò che risponde l'a-pi-ai quando è spenta:",
      "t": "E questo è ciò che risponde l'API quando è spenta:",
      "hash": "f6e850f9fd64",
@@ -17395,12 +17368,12 @@
     },
     {
      "tipo": "h2",
-     "dom": "Come è stato scritto {#ia}",
+     "dom": "Come è stato scritto",
      "id": "p3",
-     "voce": "Come è stato scritto graffa aperta ia graffa chiusa .",
-     "t": "Come è stato scritto graffa aperta ia graffa chiusa .",
-     "hash": "600a4f30c731",
-     "n": "comeèstatoscrittoia"
+     "voce": "Come è stato scritto.",
+     "t": "Come è stato scritto.",
+     "hash": "e7782fc1220b",
+     "n": "comeèstatoscritto"
     },
     {
      "tipo": "p",
@@ -17413,26 +17386,17 @@
     },
     {
      "tipo": "li",
-     "dom": "gli esempi non sono inventati: ogni comando curl, ogni script Python e TypeScript e ogni",
+     "dom": "gli esempi non sono inventati: ogni comando curl, ogni script Python e TypeScript e ogni output mostrato sono stati eseguiti contro l'API del corso, e i numeri che leggi vengono da lì;",
      "id": "p5",
-     "voce": "gli esempi non sono inventati: ogni comando curl, ogni script Python e taip script e ogni",
-     "t": "gli esempi non sono inventati: ogni comando curl, ogni script Python e TypeScript e ogni",
-     "hash": "794922df3949",
-     "n": "gliesempinonsonoinventatiognicomandocurlogniscriptpythonetypescripteogni"
-    },
-    {
-     "tipo": "p",
-     "dom": "output mostrato sono stati eseguiti contro l'API del corso, e i numeri che leggi vengono da lì;",
-     "id": "p6",
-     "voce": "output mostrato sono stati eseguiti contro l'a-pi-ai del corso, e i numeri che leggi vengono da lì;",
-     "t": "output mostrato sono stati eseguiti contro l'API del corso, e i numeri che leggi vengono da lì;",
-     "hash": "e71addac6d18",
-     "n": "outputmostratosonostatieseguiticontrolapidelcorsoeinumericheleggivengonodalì"
+     "voce": "gli esempi non sono inventati: ogni comando curl, ogni script Python e taip script e ogni output mostrato sono stati eseguiti contro l'a-pi-ai del corso, e i numeri che leggi vengono da lì;",
+     "t": "gli esempi non sono inventati: ogni comando curl, ogni script Python e TypeScript e ogni output mostrato sono stati eseguiti contro l'API del corso, e i numeri che leggi vengono da lì;",
+     "hash": "d188793b3d74",
+     "n": "gliesempinonsonoinventatiognicomandocurlogniscriptpythonetypescripteognioutputmostratosonostatieseguiticontrolapidelcorsoeinumericheleggivengonodalì"
     },
     {
      "tipo": "li",
      "dom": "restano possibili errori, imprecisioni e parti invecchiate: se ne trovi, scrivi;",
-     "id": "p7",
+     "id": "p6",
      "voce": "restano possibili errori, imprecisioni e parti invecchiate: se ne trovi, scrivi;",
      "t": "restano possibili errori, imprecisioni e parti invecchiate: se ne trovi, scrivi;",
      "hash": "c25821bcfb5a",
@@ -17440,89 +17404,53 @@
     },
     {
      "tipo": "li",
-     "dom": "l'audio delle pagine è letto da una voce sintetica (sintesi vocale del tuo browser),",
-     "id": "p8",
-     "voce": "l'audio delle pagine è letto da una voce sintetica (sintesi vocale del tuo browser),",
-     "t": "l'audio delle pagine è letto da una voce sintetica (sintesi vocale del tuo browser),",
-     "hash": "6f6f1df755aa",
-     "n": "laudiodellepagineèlettodaunavocesinteticasintesivocaledeltuobrowser"
-    },
-    {
-     "tipo": "p",
-     "dom": "non da una persona.",
-     "id": "p9",
-     "voce": "non da una persona.",
-     "t": "non da una persona.",
-     "hash": "445b7d7daa4a",
-     "n": "nondaunapersona"
+     "dom": "l'audio delle pagine è letto da una voce sintetica (sintesi vocale del tuo browser), non da una persona.",
+     "id": "p7",
+     "voce": "l'audio delle pagine è letto da una voce sintetica (sintesi vocale del tuo browser), non da una persona.",
+     "t": "l'audio delle pagine è letto da una voce sintetica (sintesi vocale del tuo browser), non da una persona.",
+     "hash": "7121e8a89693",
+     "n": "laudiodellepagineèlettodaunavocesinteticasintesivocaledeltuobrowsernondaunapersona"
     },
     {
      "tipo": "h2",
-     "dom": "Licenza {#licenza}",
+     "dom": "Licenza",
+     "id": "p8",
+     "voce": "Licenza.",
+     "t": "Licenza.",
+     "hash": "486095542948",
+     "n": "licenza"
+    },
+    {
+     "tipo": "li",
+     "dom": "Testi, spiegazioni, esercizi: Creative Commons Attribuzione 4.0 Internazionale (CC BY 4.0). Puoi copiarli, modificarli e usarli anche per scopi commerciali, citando l'autore e indicando se hai fatto modifiche.",
+     "id": "p9",
+     "voce": "Testi, spiegazioni, esercizi: Creative Commons Attribuzione 4.0 Internazionale (CC BY 4.0). Puoi copiarli, modificarli e usarli anche per scopi commerciali, citando l'autore e indicando se hai fatto modifiche.",
+     "t": "Testi, spiegazioni, esercizi: Creative Commons Attribuzione 4.0 Internazionale (CC BY 4.0). Puoi copiarli, modificarli e usarli anche per scopi commerciali, citando l'autore e indicando se hai fatto modifiche.",
+     "hash": "39472984bb08",
+     "n": "testispiegazioniesercizicreativecommonsattribuzione40internazionaleccby40puoicopiarlimodificarlieusarliancheperscopicommercialicitandolautoreeindicandosehaifatt"
+    },
+    {
+     "tipo": "li",
+     "dom": "Codice: tutti i frammenti di codice del corso, il server di prova e il codice del sito sono rilasciati con licenza MIT: fanne quello che vuoi, tenendo la nota di copyright.",
      "id": "p10",
-     "voce": "Licenza graffa aperta licenza graffa chiusa .",
-     "t": "Licenza graffa aperta licenza graffa chiusa .",
-     "hash": "ed5f08b67830",
-     "n": "licenzalicenza"
+     "voce": "Codice: tutti i frammenti di codice del corso, il server di prova e il codice del sito sono rilasciati con licenza MIT: fanne quello che vuoi, tenendo la nota di copyright.",
+     "t": "Codice: tutti i frammenti di codice del corso, il server di prova e il codice del sito sono rilasciati con licenza MIT: fanne quello che vuoi, tenendo la nota di copyright.",
+     "hash": "d3da8b7a1339",
+     "n": "codicetuttiiframmentidicodicedelcorsoilserverdiprovaeilcodicedelsitosonorilasciaticonlicenzamitfannequellochevuoitenendolanotadicopyright"
     },
     {
      "tipo": "li",
-     "dom": "Testi, spiegazioni, esercizi: [Creative Commons Attribuzione 4.0 Internazionale",
+     "dom": "Il dataset della Libreria Aurora è inventato: nomi, email e ordini non appartengono a nessuno. Anche quello è MIT.",
      "id": "p11",
-     "voce": "Testi, spiegazioni, esercizi: quadra aperta Creative Commons Attribuzione 4.0 Internazionale",
-     "t": "Testi, spiegazioni, esercizi: quadra aperta Creative Commons Attribuzione 4.0 Internazionale",
-     "hash": "e3f7cc1408e3",
-     "n": "testispiegazioniesercizicreativecommonsattribuzione40internazionale"
-    },
-    {
-     "tipo": "p",
-     "dom": "(CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/deed.it). Puoi copiarli, modificarli e usarli anche per scopi commerciali, citando l'autore e indicando se hai fatto modifiche.",
-     "id": "p12",
-     "voce": "(CC BY 4.0) quadra chiusa (https://creativecommons.org/licenses/by/4.0/deed.it). Puoi copiarli, modificarli e usarli anche per scopi commerciali, citando l'autore e indicando se hai fatto modifiche.",
-     "t": "(CC BY 4.0) quadra chiusa (https://creativecommons.org/licenses/by/4.0/deed.it). Puoi copiarli, modificarli e usarli anche per scopi commerciali, citando l'autore e indicando se hai fatto modifiche.",
-     "hash": "6af7cff237cb",
-     "n": "ccby40httpscreativecommonsorglicensesby40deeditpuoicopiarlimodificarlieusarliancheperscopicommercialicitandolautoreeindicandosehaifattomodifiche"
-    },
-    {
-     "tipo": "li",
-     "dom": "Codice: tutti i frammenti di codice del corso, il server di prova e il codice del sito sono",
-     "id": "p13",
-     "voce": "Codice: tutti i frammenti di codice del corso, il server di prova e il codice del sito sono",
-     "t": "Codice: tutti i frammenti di codice del corso, il server di prova e il codice del sito sono",
-     "hash": "635e45ffa261",
-     "n": "codicetuttiiframmentidicodicedelcorsoilserverdiprovaeilcodicedelsitosono"
-    },
-    {
-     "tipo": "p",
-     "dom": "rilasciati con licenza MIT: fanne quello che vuoi, tenendo la nota di copyright.",
-     "id": "p14",
-     "voce": "rilasciati con licenza MIT: fanne quello che vuoi, tenendo la nota di copyright.",
-     "t": "rilasciati con licenza MIT: fanne quello che vuoi, tenendo la nota di copyright.",
-     "hash": "eb2f1d5fcfee",
-     "n": "rilasciaticonlicenzamitfannequellochevuoitenendolanotadicopyright"
-    },
-    {
-     "tipo": "li",
-     "dom": "Il dataset della Libreria Aurora è inventato: nomi, email e ordini non appartengono a",
-     "id": "p15",
-     "voce": "Il dataset della Libreria Aurora è inventato: nomi, email e ordini non appartengono a",
-     "t": "Il dataset della Libreria Aurora è inventato: nomi, email e ordini non appartengono a",
-     "hash": "7a24aaf287d1",
-     "n": "ildatasetdellalibreriaauroraèinventatonomiemaileordininonappartengonoa"
-    },
-    {
-     "tipo": "p",
-     "dom": "nessuno. Anche quello è MIT.",
-     "id": "p16",
-     "voce": "nessuno. Anche quello è MIT.",
-     "t": "nessuno. Anche quello è MIT.",
-     "hash": "4c5dcc944918",
-     "n": "nessunoanchequelloèmit"
+     "voce": "Il dataset della Libreria Aurora è inventato: nomi, email e ordini non appartengono a nessuno. Anche quello è MIT.",
+     "t": "Il dataset della Libreria Aurora è inventato: nomi, email e ordini non appartengono a nessuno. Anche quello è MIT.",
+     "hash": "d000d0b3c185",
+     "n": "ildatasetdellalibreriaauroraèinventatonomiemaileordininonappartengonoanessunoanchequelloèmit"
     },
     {
      "tipo": "p",
      "dom": "Il testo completo delle due licenze è nei file LICENSE (MIT, codice) e LICENSE-CONTENUTI (CC BY 4.0, testi) del progetto.",
-     "id": "p17",
+     "id": "p12",
      "voce": "Il testo completo delle due licenze è nei file LICENSE (MIT, codice) e LICENSE-CONTENUTI (CC BY 4.0, testi) del progetto.",
      "t": "Il testo completo delle due licenze è nei file LICENSE (MIT, codice) e LICENSE-CONTENUTI (CC BY 4.0, testi) del progetto.",
      "hash": "0ca10a3c8d7d",
@@ -17531,7 +17459,7 @@
     {
      "tipo": "h2",
      "dom": "Strumenti usati",
-     "id": "p18",
+     "id": "p13",
      "voce": "Strumenti usati.",
      "t": "Strumenti usati.",
      "hash": "fada1c19490d",
@@ -17540,7 +17468,7 @@
     {
      "tipo": "tr",
      "dom": "Astro + Starlight il sito e la sua struttura MIT",
-     "id": "p19",
+     "id": "p14",
      "voce": "Strumento: Astro + Starlight; A cosa serve qui: il sito e la sua struttura; Licenza: MIT",
      "t": "Strumento: Astro + Starlight; A cosa serve qui: il sito e la sua struttura; Licenza: MIT",
      "hash": "8ac6a0ad2418",
@@ -17549,7 +17477,7 @@
     {
      "tipo": "tr",
      "dom": "Pagefind la ricerca interna, senza servizi esterni MIT",
-     "id": "p20",
+     "id": "p15",
      "voce": "Strumento: Pagefind; A cosa serve qui: la ricerca interna, senza servizi esterni; Licenza: MIT",
      "t": "Strumento: Pagefind; A cosa serve qui: la ricerca interna, senza servizi esterni; Licenza: MIT",
      "hash": "ed297712eede",
@@ -17558,7 +17486,7 @@
     {
      "tipo": "tr",
      "dom": "FastAPI e Pydantic il server di prova e la validazione MIT",
-     "id": "p21",
+     "id": "p16",
      "voce": "Strumento: FastAPI e Pydantic; A cosa serve qui: il server di prova e la validazione; Licenza: MIT",
      "t": "Strumento: FastAPI e Pydantic; A cosa serve qui: il server di prova e la validazione; Licenza: MIT",
      "hash": "ff87a5aad6cd",
@@ -17567,7 +17495,7 @@
     {
      "tipo": "tr",
      "dom": "SQLite (con FTS5) il database del dataset pubblico dominio",
-     "id": "p22",
+     "id": "p17",
      "voce": "Strumento: esse-qu-lait (con effe-ti-esse cinque); A cosa serve qui: il database del dataset; Licenza: pubblico dominio",
      "t": "Strumento: SQLite (con FTS5); A cosa serve qui: il database del dataset; Licenza: pubblico dominio",
      "hash": "8b0cb18ea372",
@@ -17576,7 +17504,7 @@
     {
      "tipo": "tr",
      "dom": "slowapi il limite di richieste al minuto MIT",
-     "id": "p23",
+     "id": "p18",
      "voce": "Strumento: slowapi; A cosa serve qui: il limite di richieste al minuto; Licenza: MIT",
      "t": "Strumento: slowapi; A cosa serve qui: il limite di richieste al minuto; Licenza: MIT",
      "hash": "81a4a4b45319",
@@ -17585,7 +17513,7 @@
     {
      "tipo": "tr",
      "dom": "Swagger UI la pagina /api/docs (servita dal sito, non da una CDN) Apache 2.0",
-     "id": "p24",
+     "id": "p19",
      "voce": "Strumento: Swagger UI; A cosa serve qui: la pagina /api/docs (servita dal sito, non da una CDN); Licenza: Apache 2.0",
      "t": "Strumento: Swagger UI; A cosa serve qui: la pagina /api/docs (servita dal sito, non da una CDN); Licenza: Apache 2.0",
      "hash": "8b8ff1a64994",
@@ -17594,7 +17522,7 @@
     {
      "tipo": "tr",
      "dom": "uvicorn esegue il server BSD 3 clausole",
-     "id": "p25",
+     "id": "p20",
      "voce": "Strumento: uvicorn; A cosa serve qui: esegue il server; Licenza: BSD 3 clausole",
      "t": "Strumento: uvicorn; A cosa serve qui: esegue il server; Licenza: BSD 3 clausole",
      "hash": "8658cee20a32",
@@ -17602,17 +17530,17 @@
     },
     {
      "tipo": "h2",
-     "dom": "Marchi: non siamo affiliati a nessuno {#marchi}",
-     "id": "p26",
-     "voce": "Marchi: non siamo affiliati a nessuno graffa aperta marchi graffa chiusa .",
-     "t": "Marchi: non siamo affiliati a nessuno graffa aperta marchi graffa chiusa .",
-     "hash": "6c13aff47223",
-     "n": "marchinonsiamoaffiliatianessunomarchi"
+     "dom": "Marchi: non siamo affiliati a nessuno",
+     "id": "p21",
+     "voce": "Marchi: non siamo affiliati a nessuno.",
+     "t": "Marchi: non siamo affiliati a nessuno.",
+     "hash": "9795e36d464c",
+     "n": "marchinonsiamoaffiliatianessuno"
     },
     {
      "tipo": "p",
      "dom": "Il corso spiega strumenti altrui e li nomina per quello che sono. Questo corso non è affiliato, sponsorizzato, approvato né verificato da nessuna delle organizzazioni che li curano. Ogni nome e marchio appartiene al rispettivo titolare:",
-     "id": "p27",
+     "id": "p22",
      "voce": "Il corso spiega strumenti altrui e li nomina per quello che sono. Questo corso non è affiliato, sponsorizzato, approvato né verificato da nessuna delle organizzazioni che li curano. Ogni nome e marchio appartiene al rispettivo titolare:",
      "t": "Il corso spiega strumenti altrui e li nomina per quello che sono. Questo corso non è affiliato, sponsorizzato, approvato né verificato da nessuna delle organizzazioni che li curano. Ogni nome e marchio appartiene al rispettivo titolare:",
      "hash": "608ef95b9c57",
@@ -17621,7 +17549,7 @@
     {
      "tipo": "li",
      "dom": "Python — Python Software Foundation",
-     "id": "p28",
+     "id": "p23",
      "voce": "Python — Python Software Foundation",
      "t": "Python — Python Software Foundation",
      "hash": "45a22e0afe08",
@@ -17630,7 +17558,7 @@
     {
      "tipo": "li",
      "dom": "JavaScript — Oracle Corporation",
-     "id": "p29",
+     "id": "p24",
      "voce": "giava script — Oracle Corporation",
      "t": "JavaScript — Oracle Corporation",
      "hash": "ef1d74d19b66",
@@ -17639,7 +17567,7 @@
     {
      "tipo": "li",
      "dom": "TypeScript e Visual Studio Code — Microsoft Corporation",
-     "id": "p30",
+     "id": "p25",
      "voce": "taip script e Visual Studio Code — Microsoft Corporation",
      "t": "TypeScript e Visual Studio Code — Microsoft Corporation",
      "hash": "60bb8f92617d",
@@ -17648,7 +17576,7 @@
     {
      "tipo": "li",
      "dom": "Node.js e npm — OpenJS Foundation",
-     "id": "p31",
+     "id": "p26",
      "voce": "Node.js e enne-pi-emme — OpenJS Foundation",
      "t": "Node.js e npm — OpenJS Foundation",
      "hash": "ec8ecbc0d84f",
@@ -17657,7 +17585,7 @@
     {
      "tipo": "li",
      "dom": "curl — Daniel Stenberg e il progetto curl",
-     "id": "p32",
+     "id": "p27",
      "voce": "curl — Daniel Stenberg e il progetto curl",
      "t": "curl — Daniel Stenberg e il progetto curl",
      "hash": "6bbe51665e50",
@@ -17666,7 +17594,7 @@
     {
      "tipo": "li",
      "dom": "jq — il progetto jq",
-     "id": "p33",
+     "id": "p28",
      "voce": "gei-qu — il progetto gei-qu",
      "t": "jq — il progetto jq",
      "hash": "cc4076fd17f4",
@@ -17675,7 +17603,7 @@
     {
      "tipo": "li",
      "dom": "SQLite — SQLite Consortium",
-     "id": "p34",
+     "id": "p29",
      "voce": "esse-qu-lait — esse-qu-lait Consortium",
      "t": "SQLite — SQLite Consortium",
      "hash": "d80f8839eb85",
@@ -17684,7 +17612,7 @@
     {
      "tipo": "li",
      "dom": "FastAPI, Pydantic, Astro, Starlight, ajv, zod — i rispettivi autori e progetti",
-     "id": "p35",
+     "id": "p30",
      "voce": "FastAPI, Pydantic, Astro, Starlight, ajv, zod — i rispettivi autori e progetti",
      "t": "FastAPI, Pydantic, Astro, Starlight, ajv, zod — i rispettivi autori e progetti",
      "hash": "c711c2da9108",
@@ -17693,7 +17621,7 @@
     {
      "tipo": "li",
      "dom": "GitHub — GitHub, Inc. (Microsoft)",
-     "id": "p36",
+     "id": "p31",
      "voce": "GitHub — GitHub, Inc. (Microsoft)",
      "t": "GitHub — GitHub, Inc. (Microsoft)",
      "hash": "a9d1facef7b2",
@@ -17702,7 +17630,7 @@
     {
      "tipo": "p",
      "dom": "Le citazioni di nomi, comandi e messaggi d'errore servono a spiegare come funzionano quegli strumenti: è uso lecito a fini didattici e di riferimento.",
-     "id": "p37",
+     "id": "p32",
      "voce": "Le citazioni di nomi, comandi e messaggi d'errore servono a spiegare come funzionano quegli strumenti: è uso lecito a fini didattici e di riferimento.",
      "t": "Le citazioni di nomi, comandi e messaggi d'errore servono a spiegare come funzionano quegli strumenti: è uso lecito a fini didattici e di riferimento.",
      "hash": "6f980663eea8",
@@ -17711,7 +17639,7 @@
     {
      "tipo": "h2",
      "dom": "Il server di prova",
-     "id": "p38",
+     "id": "p33",
      "voce": "Il server di prova.",
      "t": "Il server di prova.",
      "hash": "77b70148f28c",
@@ -17720,7 +17648,7 @@
     {
      "tipo": "p",
      "dom": "/api/v1 è un server didattico, non un servizio: i dati sono inventati, le copie private (sandbox) scadono dopo poche ore, c'è un limite di richieste al minuto e l'API resta spenta quando nessuno la usa (si accende da Attiva l'API di prova). Non va usato come backend di nient'altro, e può cambiare o sparire senza preavviso.",
-     "id": "p39",
+     "id": "p34",
      "voce": "/api/v1 è un server didattico, non un servizio: i dati sono inventati, le copie private (sandbox) scadono dopo poche ore, c'è un limite di richieste al minuto e l'a-pi-ai resta spenta quando nessuno la usa (si accende da Attiva l'a-pi-ai di prova). Non va usato come backend di nient'altro, e può cambiare o sparire senza preavviso.",
      "t": "/api/v1 è un server didattico, non un servizio: i dati sono inventati, le copie private (sandbox) scadono dopo poche ore, c'è un limite di richieste al minuto e l'API resta spenta quando nessuno la usa (si accende da Attiva l'API di prova). Non va usato come backend di nient'altro, e può cambiare o sparire senza preavviso.",
      "hash": "58598a7379b7",
@@ -17822,62 +17750,35 @@
     },
     {
      "tipo": "li",
-     "dom": "Il tuo indirizzo IP, come qualunque server web, per il tempo necessario a risponderti e per",
+     "dom": "Il tuo indirizzo IP, come qualunque server web, per il tempo necessario a risponderti e per applicare il limite di richieste al minuto (serve a evitare che qualcuno sovraccarichi il server di prova). Il conteggio sta in memoria e si azzera da sé.",
      "id": "p10",
-     "voce": "Il tuo indirizzo IP, come qualunque server web, per il tempo necessario a risponderti e per",
-     "t": "Il tuo indirizzo IP, come qualunque server web, per il tempo necessario a risponderti e per",
-     "hash": "29f63aacab81",
-     "n": "iltuoindirizzoipcomequalunqueserverwebperiltemponecessarioarispondertieper"
+     "voce": "Il tuo indirizzo IP, come qualunque server web, per il tempo necessario a risponderti e per applicare il limite di richieste al minuto (serve a evitare che qualcuno sovraccarichi il server di prova). Il conteggio sta in memoria e si azzera da sé.",
+     "t": "Il tuo indirizzo IP, come qualunque server web, per il tempo necessario a risponderti e per applicare il limite di richieste al minuto (serve a evitare che qualcuno sovraccarichi il server di prova). Il conteggio sta in memoria e si azzera da sé.",
+     "hash": "1d5afc6df163",
+     "n": "iltuoindirizzoipcomequalunqueserverwebperiltemponecessarioarispondertieperapplicareillimitedirichiestealminutoserveaevitarechequalcunosovraccarichiilserverdipro"
     },
     {
-     "tipo": "p",
-     "dom": "applicare il limite di richieste al minuto (serve a evitare che qualcuno sovraccarichi il server di prova). Il conteggio sta in memoria e si azzera da sé.",
+     "tipo": "li",
+     "dom": "Il reverse proxy non tiene registri di accesso: non c'è un archivio di chi ha visitato cosa. Il servizio scrive solo messaggi tecnici nel diario di sistema del server, che restano sulla macchina e non vengono analizzati.",
      "id": "p11",
-     "voce": "applicare il limite di richieste al minuto (serve a evitare che qualcuno sovraccarichi il server di prova). Il conteggio sta in memoria e si azzera da sé.",
-     "t": "applicare il limite di richieste al minuto (serve a evitare che qualcuno sovraccarichi il server di prova). Il conteggio sta in memoria e si azzera da sé.",
-     "hash": "6c094d7771c8",
-     "n": "applicareillimitedirichiestealminutoserveaevitarechequalcunosovraccarichiilserverdiprovailconteggiostainmemoriaesiazzeradasé"
+     "voce": "Il reverse proxy non tiene registri di accesso: non c'è un archivio di chi ha visitato cosa. Il servizio scrive solo messaggi tecnici nel diario di sistema del server, che restano sulla macchina e non vengono analizzati.",
+     "t": "Il reverse proxy non tiene registri di accesso: non c'è un archivio di chi ha visitato cosa. Il servizio scrive solo messaggi tecnici nel diario di sistema del server, che restano sulla macchina e non vengono analizzati.",
+     "hash": "8ee2088c0c70",
+     "n": "ilreverseproxynontieneregistridiaccessononcèunarchiviodichihavisitatocosailservizioscrivesolomessaggitecnicineldiariodisistemadelservercherestanosullamacchinaen"
     },
     {
      "tipo": "li",
-     "dom": "Il reverse proxy non tiene registri di accesso: non c'è un archivio di chi ha visitato cosa.",
+     "dom": "Quello che scrivi nella tua sandbox (libri, ordini, clienti che crei negli esercizi) sta in una copia privata del database identificata solo dal tuo token, e viene cancellata dopo poche ore di inattività. Non metterci dati veri di nessuno: è una palestra.",
      "id": "p12",
-     "voce": "Il reverse proxy non tiene registri di accesso: non c'è un archivio di chi ha visitato cosa.",
-     "t": "Il reverse proxy non tiene registri di accesso: non c'è un archivio di chi ha visitato cosa.",
-     "hash": "e8df659533a9",
-     "n": "ilreverseproxynontieneregistridiaccessononcèunarchiviodichihavisitatocosa"
-    },
-    {
-     "tipo": "p",
-     "dom": "Il servizio scrive solo messaggi tecnici nel diario di sistema del server, che restano sulla macchina e non vengono analizzati.",
-     "id": "p13",
-     "voce": "Il servizio scrive solo messaggi tecnici nel diario di sistema del server, che restano sulla macchina e non vengono analizzati.",
-     "t": "Il servizio scrive solo messaggi tecnici nel diario di sistema del server, che restano sulla macchina e non vengono analizzati.",
-     "hash": "64a510f9b097",
-     "n": "ilservizioscrivesolomessaggitecnicineldiariodisistemadelservercherestanosullamacchinaenonvengonoanalizzati"
-    },
-    {
-     "tipo": "li",
-     "dom": "Quello che scrivi nella tua sandbox (libri, ordini, clienti che crei negli esercizi) sta in",
-     "id": "p14",
-     "voce": "Quello che scrivi nella tua sandbox (libri, ordini, clienti che crei negli esercizi) sta in",
-     "t": "Quello che scrivi nella tua sandbox (libri, ordini, clienti che crei negli esercizi) sta in",
-     "hash": "4486aea14a2e",
-     "n": "quellochescrivinellatuasandboxlibriordiniclientichecreinegliesercizistain"
-    },
-    {
-     "tipo": "p",
-     "dom": "una copia privata del database identificata solo dal tuo token, e viene cancellata dopo poche ore di inattività. Non metterci dati veri di nessuno: è una palestra.",
-     "id": "p15",
-     "voce": "una copia privata del database identificata solo dal tuo token, e viene cancellata dopo poche ore di inattività. Non metterci dati veri di nessuno: è una palestra.",
-     "t": "una copia privata del database identificata solo dal tuo token, e viene cancellata dopo poche ore di inattività. Non metterci dati veri di nessuno: è una palestra.",
-     "hash": "30348ff38343",
-     "n": "unacopiaprivatadeldatabaseidentificatasolodaltuotokenevienecancellatadopopocheorediinattivitànonmettercidativeridinessunoèunapalestra"
+     "voce": "Quello che scrivi nella tua sandbox (libri, ordini, clienti che crei negli esercizi) sta in una copia privata del database identificata solo dal tuo token, e viene cancellata dopo poche ore di inattività. Non metterci dati veri di nessuno: è una palestra.",
+     "t": "Quello che scrivi nella tua sandbox (libri, ordini, clienti che crei negli esercizi) sta in una copia privata del database identificata solo dal tuo token, e viene cancellata dopo poche ore di inattività. Non metterci dati veri di nessuno: è una palestra.",
+     "hash": "7d1fc1892f32",
+     "n": "quellochescrivinellatuasandboxlibriordiniclientichecreinegliesercizistainunacopiaprivatadeldatabaseidentificatasolodaltuotokenevienecancellatadopopocheorediinat"
     },
     {
      "tipo": "h2",
      "dom": "Font, script e servizi esterni",
-     "id": "p16",
+     "id": "p13",
      "voce": "Font, script e servizi esterni.",
      "t": "Font, script e servizi esterni.",
      "hash": "a8aa09d59d52",
@@ -17886,7 +17787,7 @@
     {
      "tipo": "p",
      "dom": "Nessuno. Caratteri, fogli di stile, JavaScript, ricerca interna e file audio sono tutti serviti da questo sito: aprendo una pagina del corso il tuo browser non contatta nessun altro dominio. Anche la documentazione interattiva /api/docs carica Swagger UI da qui, non da una CDN esterna.",
-     "id": "p17",
+     "id": "p14",
      "voce": "Nessuno. Caratteri, fogli di stile, giava script, ricerca interna e file audio sono tutti serviti da questo sito: aprendo una pagina del corso il tuo browser non contatta nessun altro dominio. Anche la documentazione interattiva /api/docs carica Swagger UI da qui, non da una CDN esterna.",
      "t": "Nessuno. Caratteri, fogli di stile, JavaScript, ricerca interna e file audio sono tutti serviti da questo sito: aprendo una pagina del corso il tuo browser non contatta nessun altro dominio. Anche la documentazione interattiva /api/docs carica Swagger UI da qui, non da una CDN esterna.",
      "hash": "e67c07720198",
@@ -17895,7 +17796,7 @@
     {
      "tipo": "p",
      "dom": "Le uniche connessioni altrove partono se clicchi tu un link esterno (per esempio alla documentazione di jq o a un RFC): da quel momento vale la privacy di quel sito.",
-     "id": "p18",
+     "id": "p15",
      "voce": "Le uniche connessioni altrove partono se clicchi tu un link esterno (per esempio alla documentazione di gei-qu o a un RFC): da quel momento vale la privacy di quel sito.",
      "t": "Le uniche connessioni altrove partono se clicchi tu un link esterno (per esempio alla documentazione di jq o a un RFC): da quel momento vale la privacy di quel sito.",
      "hash": "99b050bd3bdd",
@@ -17904,7 +17805,7 @@
     {
      "tipo": "h2",
      "dom": "Audio",
-     "id": "p19",
+     "id": "p16",
      "voce": "Audio.",
      "t": "Audio.",
      "hash": "dc68b19ab951",
@@ -17913,7 +17814,7 @@
     {
      "tipo": "p",
      "dom": "La lettura ad alta voce usa la sintesi vocale del tuo browser (Web Speech API): il testo viene pronunciato sul tuo dispositivo. Alcuni browser, per le voci \"online\", possono inviare il testo da leggere ai server del loro produttore: è una scelta del browser, non del sito, e riguarda il testo pubblico del corso. Se preferisci evitarlo, scegli una voce locale nel menù del lettore o spegni del tutto la lettura audio dal pulsante «Non mostrare più la lettura audio».",
-     "id": "p20",
+     "id": "p17",
      "voce": "La lettura ad alta voce usa la sintesi vocale del tuo browser (Web Speech a-pi-ai): il testo viene pronunciato sul tuo dispositivo. Alcuni browser, per le voci \"online\", possono inviare il testo da leggere ai server del loro produttore: è una scelta del browser, non del sito, e riguarda il testo pubblico del corso. Se preferisci evitarlo, scegli una voce locale nel menù del lettore o spegni del tutto la lettura audio dal pulsante «Non mostrare più la lettura audio».",
      "t": "La lettura ad alta voce usa la sintesi vocale del tuo browser (Web Speech API): il testo viene pronunciato sul tuo dispositivo. Alcuni browser, per le voci \"online\", possono inviare il testo da leggere ai server del loro produttore: è una scelta del browser, non del sito, e riguarda il testo pubblico del corso. Se preferisci evitarlo, scegli una voce locale nel menù del lettore o spegni del tutto la lettura audio dal pulsante «Non mostrare più la lettura audio».",
      "hash": "a600fa6f40c1",
@@ -17922,7 +17823,7 @@
     {
      "tipo": "h2",
      "dom": "Diritti e contatti",
-     "id": "p21",
+     "id": "p18",
      "voce": "Diritti e contatti.",
      "t": "Diritti e contatti.",
      "hash": "c7644debdf13",
@@ -17931,7 +17832,7 @@
     {
      "tipo": "p",
      "dom": "Non esiste un archivio di dati personali dei lettori, quindi non c'è nulla da consultare, correggere o cancellare: ti basta cancellare i dati del sito dal tuo browser. Per qualsiasi domanda: info@giuseppebosi.com.",
-     "id": "p22",
+     "id": "p19",
      "voce": "Non esiste un archivio di dati personali dei lettori, quindi non c'è nulla da consultare, correggere o cancellare: ti basta cancellare i dati del sito dal tuo browser. Per qualsiasi domanda: info@giuseppebosi.com.",
      "t": "Non esiste un archivio di dati personali dei lettori, quindi non c'è nulla da consultare, correggere o cancellare: ti basta cancellare i dati del sito dal tuo browser. Per qualsiasi domanda: info@giuseppebosi.com.",
      "hash": "c848cc20af0b",
@@ -17940,7 +17841,7 @@
     {
      "tipo": "p",
      "dom": "Se questa pagina e il comportamento del sito non coincidono, vince il comportamento del sito ed è questa pagina a essere sbagliata: segnalalo.",
-     "id": "p23",
+     "id": "p20",
      "voce": "Se questa pagina e il comportamento del sito non coincidono, vince il comportamento del sito ed è questa pagina a essere sbagliata: segnalalo.",
      "t": "Se questa pagina e il comportamento del sito non coincidono, vince il comportamento del sito ed è questa pagina a essere sbagliata: segnalalo.",
      "hash": "2a4d494fe3ae",

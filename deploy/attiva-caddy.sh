@@ -15,13 +15,19 @@ CADDYFILE=/etc/caddy/Caddyfile
 [ -x api/.venv/bin/uvicorn ] || { echo "Manca api/.venv: cd api && uv sync" >&2; exit 1; }
 
 echo "1. Servizio corso-api-json"
-sed "s|__PROGETTO__|$PROGETTO|g" deploy/corso-api-json.service > "$UNIT"
-systemctl daemon-reload
-systemctl enable --now corso-api-json >/dev/null
+# Il servizio gira con l'utente corso-api da /opt: lo installa deploy/installa-utente-api.sh,
+# che crea l'utente, copia il codice e mette la unit. Qui ci limitiamo a usarlo.
+if ! id -u corso-api >/dev/null 2>&1 || [ ! -f "$UNIT" ]; then
+  echo "   KO: prima va installato il servizio con l'utente dedicato:" >&2
+  echo "       cd $PROGETTO && python3 deploy/imposta-password-api.py" >&2
+  echo "       cd $PROGETTO && sudo deploy/installa-utente-api.sh" >&2
+  exit 1
+fi
 systemctl restart corso-api-json
-for _ in $(seq 1 15); do curl -sf -o /dev/null "http://127.0.0.1:$PORTA/api/v1/health" && break; sleep 2; done
-curl -sf -o /dev/null "http://127.0.0.1:$PORTA/api/v1/health" || { echo "   KO: il servizio non risponde (journalctl -u corso-api-json -n 30)" >&2; exit 1; }
-echo "   ok  (attivo su 127.0.0.1:$PORTA)"
+# l'API di prova nasce spenta: l'interruttore è l'endpoint che risponde sempre
+for _ in $(seq 1 15); do curl -sf -o /dev/null "http://127.0.0.1:$PORTA/api/v1/interruttore" && break; sleep 2; done
+curl -sf -o /dev/null "http://127.0.0.1:$PORTA/api/v1/interruttore" || { echo "   KO: il servizio non risponde (journalctl -u corso-api-json -n 30)" >&2; exit 1; }
+echo "   ok  (attivo su 127.0.0.1:$PORTA, API di prova spenta)"
 
 echo "2. Blocco Caddy"
 if grep -q "^$DOMINIO {" "$CADDYFILE"; then
