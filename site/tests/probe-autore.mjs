@@ -17,7 +17,7 @@ for (const [nome, vp] of [['desktop 1280', { width: 1280, height: 800 }], ['tele
     await p.waitForTimeout(250);
     const box2 = await a.boundingBox();
     const dentro = box2 && box2.y >= 0 && box2.y < vp.height && box2.width > 20;
-    ok(vis && testo === 'Prof. Giuseppe Bosi' && href === 'https://home.giuseppebosi.com' && box.width > 20 && dentro,
+    ok(vis && testo === 'Prof. Giuseppe Bosi' && href === 'https://www.giuseppebosi.com' && box.width > 20 && dentro,
        `${nome} ${u} — "${testo}" ${box ? Math.round(box.width) + 'px' : 'nessun box'} ${dentro ? 'fissa dopo scroll' : 'NON visibile dopo scroll'}`);
   }
   // il link funziona
