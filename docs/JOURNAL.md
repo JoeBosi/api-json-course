@@ -38,3 +38,11 @@ Giuseppe ha deciso di aprire il corso senza password (i link sono nel CV letto d
 del Comune); il Controller ha tolto `basic_auth` dal Caddyfile. Regola scritta in CLAUDE.md:
 non rimetterla, non toccare Caddy nelle pubblicazioni, e dopo ogni pubblicazione verificare con
 curl che le pagine rispondano 200 senza credenziali. La password resta solo per accendere l'API.
+
+## 28/10/2026 — "Prof. Giuseppe Bosi" nella barra in alto
+Richiesta di Giuseppe: il nome dell'autore sempre visibile nell'header, con link alla sua home.
+Fatto con un override di `SiteTitle` di Starlight (`site/src/components/SiteTitle.astro`): il
+nome sta sotto il titolo del corso, dentro la barra, che Starlight tiene fissa in cima. Sotto i
+480 px titolo e nome rimpiccioliscono per entrare nei 390 px.
+Pubblicazione: il servizio serve `/opt/corso-api-json/site/dist`, quindi per il solo sito basta
+l'rsync di `dist` (niente riavvio, niente Caddy). Verifica con `site/tests/probe-autore.mjs`.
