@@ -49,7 +49,7 @@ export default defineConfig({
 					{ label: 'Swagger UI (/api/docs)', link: '/api/docs', attrs: { target: '_blank' } },
 				] },
 			],
-			components: { PageTitle: './src/components/PageTitle.astro', Footer: './src/components/Footer.astro' },
+			components: { PageTitle: './src/components/PageTitle.astro', Footer: './src/components/Footer.astro', SiteTitle: './src/components/SiteTitle.astro' },
 		}),
 	],
 });

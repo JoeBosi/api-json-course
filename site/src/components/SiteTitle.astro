@@ -1,0 +1,50 @@
+---
+/**
+ * Titolo nella barra in alto: il nome del corso e, sotto, il nome dell'autore con link alla
+ * sua home. Sostituisce il SiteTitle di Starlight (qui non c'è un logo, quindi basta il testo).
+ * La barra di Starlight è fissa in cima: la scritta resta visibile anche scorrendo la pagina.
+ */
+const { siteTitle, siteTitleHref } = Astro.locals.starlightRoute;
+---
+
+<div class="titolo-corso">
+  <a href={siteTitleHref} class="site-title" translate="no">{siteTitle}</a>
+  <a class="autore" href="https://home.giuseppebosi.com" rel="author">Prof. Giuseppe Bosi</a>
+</div>
+
+<style>
+  .titolo-corso {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0;
+    min-width: 0;
+    line-height: 1.15;
+  }
+  .site-title {
+    font-size: var(--sl-text-h5);
+    font-weight: 600;
+    color: var(--sl-color-text-accent);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .autore {
+    font-size: var(--sl-text-xs);
+    font-weight: 500;
+    color: var(--sl-color-gray-2);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .autore:hover,
+  .autore:focus-visible { color: var(--sl-color-text-accent); text-decoration: underline; }
+
+  /* sui telefoni la barra è stretta: testo più piccolo, così entrano titolo e autore */
+  @media (max-width: 30rem) {
+    .site-title { font-size: var(--sl-text-sm); }
+    .autore { font-size: 0.6875rem; }
+  }
+</style>
