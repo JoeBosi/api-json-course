@@ -23,3 +23,12 @@ Formato: `data — cosa — decisione/esito`.
 - 2026-10-28 — Voce audio: scelta la **voce del browser** (Web Speech), Piper rimosso dal lettore e da `pubblica.sh` (`genera.py --solo-manifest`); i 1627 MP3 di Piper sono rimasti su disco in attesa dell'ok di Giuseppe per cancellarli. Dove il browser non ha voci italiane il lettore lo dice invece di leggere male.
 - 2026-10-28 — Primo commit locale (nessun remoto). `attiva-caddy.sh` non installa più la unit: ora lo fa `installa-utente-api.sh`.
 - 2026-10-28 — Su ok di Giuseppe, i 1627 MP3 di Piper (105 MB) spostati nel Cestino con `gio trash` (`~/.local/share/Trash`, lo svuota lui). Il sito passa da 111 MB a 8,6 MB; test rifatti dopo la rimozione: 21 pytest verdi, build 43 pagine, E2E OK, lettura audio che avvisa quando il browser non ha voci italiane. Aggiunto `deploy/cambia-password-sito.sh`: chiede la nuova password del sito senza mostrarla, calcola l'hash bcrypt con `caddy hash-password`, lo salva in `/root/.config/corso-api-json/basic-auth.hash` (600) e aggiorna `deploy/Caddyfile.snippet`; NON tocca `/etc/caddy/Caddyfile` né ricarica Caddy (lo fa il Controller).
+
+## 28/10/2026 — Via le frasi di avvertenza sull'IA
+Richiesta di Giuseppe (via Controller): in un corso ogni frase deve insegnare qualcosa, quindi
+niente diciture "scritto con l'aiuto dell'IA", "riletto dall'autore", "esempi non inventati",
+né marche di verifica. Tolte dal piè di pagina, dalla Presentazione e dai Crediti; nelle
+Informazioni restano autore, licenza, crediti e privacy. Le due note su `node:sqlite` che
+dicevano "verificato con Node 22.23" / "sperimentale" sono diventate contenuto normale con il
+link alla documentazione ufficiale di Node. Corretta anche la frase della Presentazione che
+offriva ancora "la voce generata sul server" (Piper non c'è più).

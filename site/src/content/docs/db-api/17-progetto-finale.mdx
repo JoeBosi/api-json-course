@@ -29,7 +29,7 @@ Molte applicazioni reali fanno esattamente questo: leggono da un'API e tengono u
 - **Verifica**: un numero calcolato in locale confrontato con lo stesso numero calcolato dal server è il test più semplice ed efficace.
 
 <Aside type="note" title="SQLite in TypeScript">
-Node 22 include il modulo `node:sqlite` (`DatabaseSync`), ancora sperimentale: si abilita con `--experimental-sqlite` (verificato con Node 22.23). Se il tuo Node non lo ha, salva i dati in un file JSON e fai il report con `Array.reduce`: la logica non cambia.
+Node 22 include il modulo [`node:sqlite`](https://nodejs.org/api/sqlite.html) (`DatabaseSync`), che si abilita con il flag `--experimental-sqlite`. Se il tuo Node non lo ha, salva i dati in un file JSON e fai il report con `Array.reduce`: la logica non cambia.
 </Aside>
 
 ## curl, spiegato opzione per opzione

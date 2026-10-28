@@ -168,7 +168,7 @@ for (const b of r2.items) console.log(b.price, b.title, b["attributes.format"]);
 const r3 = await post("/sql", { sql: "SELECT b.title, j.value AS award FROM books b, json_each(b.attributes, '$.awards') j LIMIT 4" });
 console.log(r3.columns, r3.rows);
 ```
-In locale, Node 22 include un driver SQLite sperimentale: `import { DatabaseSync } from "node:sqlite"` (flag `--experimental-sqlite`), con le stesse funzioni `json_*` perché è lo stesso motore. In alternativa `npm install better-sqlite3`.
+In locale, Node 22 include un driver SQLite integrato: `import { DatabaseSync } from "node:sqlite"` (flag `--experimental-sqlite`, [documentazione](https://nodejs.org/api/sqlite.html)), con le stesse funzioni `json_*` perché è lo stesso motore. In alternativa `npm install better-sqlite3`.
 </TabItem>
 </Tabs>
 

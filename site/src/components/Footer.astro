@@ -1,8 +1,7 @@
 ---
 /**
  * Piè di pagina: tiene quello di Starlight (navigazione, data di ultimo aggiornamento) e
- * aggiunge le diciture dell'opera: autore, contatto, licenza, crediti, privacy e il fatto
- * che i testi sono stati scritti con l'aiuto dell'IA e riletti dall'autore.
+ * aggiunge le informazioni dell'opera: autore, contatto, licenza, crediti e privacy.
  */
 import Default from '@astrojs/starlight/components/Footer.astro';
 ---
@@ -20,10 +19,6 @@ import Default from '@astrojs/starlight/components/Footer.astro';
     <a href="/crediti/">Crediti e licenze</a> ·
     <a href="/privacy/">Privacy</a>
   </p>
-  <p class="corso-footer__ia">
-    Scritto con l'aiuto dell'intelligenza artificiale e riletto dall'autore. Gli esempi sono
-    eseguiti contro l'API del corso, non riprodotti a memoria.
-  </p>
 </footer>
 
 <style>
@@ -36,5 +31,4 @@ import Default from '@astrojs/starlight/components/Footer.astro';
   }
   .corso-footer p { margin: .3rem 0; }
   .corso-footer a { color: inherit; text-decoration: underline; }
-  .corso-footer__ia { font-style: italic; }
 </style>

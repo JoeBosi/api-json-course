@@ -8988,12 +8988,12 @@
     },
     {
      "tipo": "p",
-     "dom": "Node 22 include il modulo node:sqlite (DatabaseSync), ancora sperimentale: si abilita con --experimental-sqlite (verificato con Node 22.23). Se il tuo Node non lo ha, salva i dati in un file JSON e fai il report con Array.reduce: la logica non cambia.",
+     "dom": "Node 22 include il modulo node:sqlite (DatabaseSync), che si abilita con il flag --experimental-sqlite. Se il tuo Node non lo ha, salva i dati in un file JSON e fai il report con Array.reduce: la logica non cambia.",
      "id": "p15",
-     "voce": "Node 22 include il modulo node:sqlite (DatabaseSync), ancora sperimentale: si abilita con --experimental-sqlite (verificato con Node 22.23). Se il tuo Node non lo ha, salva i dati in un file gèison e fai il report con Array.reduce: la logica non cambia.",
-     "t": "Node 22 include il modulo node:sqlite (DatabaseSync), ancora sperimentale: si abilita con --experimental-sqlite (verificato con Node 22.23). Se il tuo Node non lo ha, salva i dati in un file JSON e fai il report con Array.reduce: la logica non cambia.",
-     "hash": "073d437c9c21",
-     "n": "node22includeilmodulonodesqlitedatabasesyncancorasperimentalesiabilitaconexperimentalsqliteverificatoconnode2223seiltuonodenonlohasalvaidatiinunfilejsonefaiilre"
+     "voce": "Node 22 include il modulo node:sqlite (DatabaseSync), che si abilita con il flag --experimental-sqlite. Se il tuo Node non lo ha, salva i dati in un file gèison e fai il report con Array.reduce: la logica non cambia.",
+     "t": "Node 22 include il modulo node:sqlite (DatabaseSync), che si abilita con il flag --experimental-sqlite. Se il tuo Node non lo ha, salva i dati in un file JSON e fai il report con Array.reduce: la logica non cambia.",
+     "hash": "9c138d49127c",
+     "n": "node22includeilmodulonodesqlitedatabasesyncchesiabilitaconilflagexperimentalsqliteseiltuonodenonlohasalvaidatiinunfilejsonefaiilreportconarrayreducelalogicanonc"
     },
     {
      "tipo": "h2",
@@ -13818,12 +13818,12 @@
     },
     {
      "tipo": "p",
-     "dom": "In locale, Node 22 include un driver SQLite sperimentale: import { DatabaseSync } from \"node:sqlite\" (flag --experimental-sqlite), con le stesse funzioni json_* perché è lo stesso motore. In alternativa npm install better-sqlite3.",
+     "dom": "In locale, Node 22 include un driver SQLite integrato: import { DatabaseSync } from \"node:sqlite\" (flag --experimental-sqlite, documentazione), con le stesse funzioni json_* perché è lo stesso motore. In alternativa npm install better-sqlite3.",
      "id": "p28",
-     "voce": "In locale, Node 22 include un driver esse-qu-lait sperimentale: import graffa aperta DatabaseSync graffa chiusa from \"node:sqlite\" (flag --experimental-sqlite), con le stesse funzioni json perché è lo stesso motore. In alternativa enne-pi-emme install better-sqlite3.",
-     "t": "In locale, Node 22 include un driver SQLite sperimentale: import graffa aperta DatabaseSync graffa chiusa from \"node:sqlite\" (flag --experimental-sqlite), con le stesse funzioni json perché è lo stesso motore. In alternativa npm install better-sqlite3.",
-     "hash": "b471dd914a75",
-     "n": "inlocalenode22includeundriversqlitesperimentaleimportdatabasesyncfromnodesqliteflagexperimentalsqliteconlestessefunzionijsonperchéèlostessomotoreinalternativanp"
+     "voce": "In locale, Node 22 include un driver esse-qu-lait integrato: import graffa aperta DatabaseSync graffa chiusa from \"node:sqlite\" (flag --experimental-sqlite, documentazione), con le stesse funzioni json perché è lo stesso motore. In alternativa enne-pi-emme install better-sqlite3.",
+     "t": "In locale, Node 22 include un driver SQLite integrato: import graffa aperta DatabaseSync graffa chiusa from \"node:sqlite\" (flag --experimental-sqlite, documentazione), con le stesse funzioni json perché è lo stesso motore. In alternativa npm install better-sqlite3.",
+     "hash": "ab58f8ca9ab0",
+     "n": "inlocalenode22includeundriversqliteintegratoimportdatabasesyncfromnodesqliteflagexperimentalsqlitedocumentazioneconlestessefunzionijsonperchéèlostessomotoreinal"
     },
     {
      "tipo": "aside",
@@ -15102,11 +15102,11 @@
     },
     {
      "tipo": "p",
-     "dom": "Sotto il titolo di ogni capitolo c'è un piccolo pulsante 🔊 Ascolta. Non parte mai da solo: se lo apri, la pagina viene letta paragrafo per paragrafo, con il paragrafo in lettura evidenziato. Puoi mettere in pausa, fermare, saltare avanti e indietro, cambiare velocità e scegliere la voce: quelle del tuo browser (in Edge le voci «Natural», su Mac e iPhone quelle «Avanzate» sono le migliori) o la voce generata sul server. Il codice non viene letto; davanti a un esercizio da eseguire la lettura si ferma e aspetta te. Se preferisci leggere e basta, puoi toglierla da tutto il sito:",
+     "dom": "Sotto il titolo di ogni capitolo c'è un piccolo pulsante 🔊 Ascolta. Non parte mai da solo: se lo apri, la pagina viene letta paragrafo per paragrafo, con il paragrafo in lettura evidenziato. Puoi mettere in pausa, fermare, saltare avanti e indietro, cambiare velocità e scegliere la voce: la lettura usa la sintesi vocale del tuo browser, quindi le voci disponibili sono quelle del tuo dispositivo (in Edge le voci «Natural», su Mac e iPhone quelle «Avanzate» sono le migliori). Il codice non viene letto; davanti a un esercizio da eseguire la lettura si ferma e aspetta te. Se preferisci leggere e basta, puoi toglierla da tutto il sito:",
      "id": "p14",
-     "voce": "Sotto il titolo di ogni capitolo c'è un piccolo pulsante 🔊 Ascolta. Non parte mai da solo: se lo apri, la pagina viene letta paragrafo per paragrafo, con il paragrafo in lettura evidenziato. Puoi mettere in pausa, fermare, saltare avanti e indietro, cambiare velocità e scegliere la voce: quelle del tuo browser (in Edge le voci «Natural», su Mac e iPhone quelle «Avanzate» sono le migliori) o la voce generata sul server. Il codice non viene letto; davanti a un esercizio da eseguire la lettura si ferma e aspetta te. Se preferisci leggere e basta, puoi toglierla da tutto il sito:",
-     "t": "Sotto il titolo di ogni capitolo c'è un piccolo pulsante 🔊 Ascolta. Non parte mai da solo: se lo apri, la pagina viene letta paragrafo per paragrafo, con il paragrafo in lettura evidenziato. Puoi mettere in pausa, fermare, saltare avanti e indietro, cambiare velocità e scegliere la voce: quelle del tuo browser (in Edge le voci «Natural», su Mac e iPhone quelle «Avanzate» sono le migliori) o la voce generata sul server. Il codice non viene letto; davanti a un esercizio da eseguire la lettura si ferma e aspetta te. Se preferisci leggere e basta, puoi toglierla da tutto il sito:",
-     "hash": "f65ea7bcf416",
+     "voce": "Sotto il titolo di ogni capitolo c'è un piccolo pulsante 🔊 Ascolta. Non parte mai da solo: se lo apri, la pagina viene letta paragrafo per paragrafo, con il paragrafo in lettura evidenziato. Puoi mettere in pausa, fermare, saltare avanti e indietro, cambiare velocità e scegliere la voce: la lettura usa la sintesi vocale del tuo browser, quindi le voci disponibili sono quelle del tuo dispositivo (in Edge le voci «Natural», su Mac e iPhone quelle «Avanzate» sono le migliori). Il codice non viene letto; davanti a un esercizio da eseguire la lettura si ferma e aspetta te. Se preferisci leggere e basta, puoi toglierla da tutto il sito:",
+     "t": "Sotto il titolo di ogni capitolo c'è un piccolo pulsante 🔊 Ascolta. Non parte mai da solo: se lo apri, la pagina viene letta paragrafo per paragrafo, con il paragrafo in lettura evidenziato. Puoi mettere in pausa, fermare, saltare avanti e indietro, cambiare velocità e scegliere la voce: la lettura usa la sintesi vocale del tuo browser, quindi le voci disponibili sono quelle del tuo dispositivo (in Edge le voci «Natural», su Mac e iPhone quelle «Avanzate» sono le migliori). Il codice non viene letto; davanti a un esercizio da eseguire la lettura si ferma e aspetta te. Se preferisci leggere e basta, puoi toglierla da tutto il sito:",
+     "hash": "61818e4ec2d2",
      "n": "sottoiltitolodiognicapitolocèunpiccolopulsanteascoltanonpartemaidasoloseloaprilapaginavienelettaparagrafoperparagrafoconilparagrafoinletturaevidenziatopuoimette"
     },
     {
@@ -15183,26 +15183,17 @@
     },
     {
      "tipo": "h2",
-     "dom": "Come è stato scritto questo corso",
+     "dom": "Informazioni",
      "id": "p23",
-     "voce": "Come è stato scritto questo corso.",
-     "t": "Come è stato scritto questo corso.",
-     "hash": "c4504613156e",
-     "n": "comeèstatoscrittoquestocorso"
-    },
-    {
-     "tipo": "p",
-     "dom": "I testi sono stati prodotti con l'aiuto dell'intelligenza artificiale e poi riletti e verificati dall'autore. Gli esempi però non sono inventati: ogni comando, script e output che leggi è stato eseguito davvero contro l'API del corso. L'audio delle pagine è letto da una voce sintetica, non da una persona.",
-     "id": "p24",
-     "voce": "I testi sono stati prodotti con l'aiuto dell'intelligenza artificiale e poi riletti e verificati dall'autore. Gli esempi però non sono inventati: ogni comando, script e output che leggi è stato eseguito davvero contro l'a-pi-ai del corso. L'audio delle pagine è letto da una voce sintetica, non da una persona.",
-     "t": "I testi sono stati prodotti con l'aiuto dell'intelligenza artificiale e poi riletti e verificati dall'autore. Gli esempi però non sono inventati: ogni comando, script e output che leggi è stato eseguito davvero contro l'API del corso. L'audio delle pagine è letto da una voce sintetica, non da una persona.",
-     "hash": "548b95cb152c",
-     "n": "itestisonostatiprodotticonlaiutodellintelligenzaartificialeepoirilettieverificatidallautoregliesempiperònonsonoinventatiognicomandoscripteoutputcheleggièstatoes"
+     "voce": "Informazioni.",
+     "t": "Informazioni.",
+     "hash": "5932068ceaf3",
+     "n": "informazioni"
     },
     {
      "tipo": "p",
      "dom": "Il corso è gratuito e riusabile: testi con licenza CC BY 4.0, codice con licenza MIT. Dettagli, strumenti usati e marchi citati in Crediti e licenze; cosa salva il sito (poco) in Privacy.",
-     "id": "p25",
+     "id": "p24",
      "voce": "Il corso è gratuito e riusabile: testi con licenza CC BY 4.0, codice con licenza MIT. Dettagli, strumenti usati e marchi citati in Crediti e licenze; cosa salva il sito (poco) in Privacy.",
      "t": "Il corso è gratuito e riusabile: testi con licenza CC BY 4.0, codice con licenza MIT. Dettagli, strumenti usati e marchi citati in Crediti e licenze; cosa salva il sito (poco) in Privacy.",
      "hash": "ed94207c552c",
@@ -15211,7 +15202,7 @@
     {
      "tipo": "p",
      "dom": "Errori e segnalazioni: info@giuseppebosi.com.",
-     "id": "p26",
+     "id": "p25",
      "voce": "Errori e segnalazioni: info@giuseppebosi.com.",
      "t": "Errori e segnalazioni: info@giuseppebosi.com.",
      "hash": "2cc176c6398c",
@@ -17359,62 +17350,17 @@
     },
     {
      "tipo": "p",
-     "dom": "La data di ultimo aggiornamento di ogni pagina è in fondo alla pagina stessa.",
+     "dom": "La data di ultimo aggiornamento di ogni pagina è in fondo alla pagina stessa. La lettura ad alta voce usa la sintesi vocale del browser: la voce è quella del tuo dispositivo.",
      "id": "p2",
-     "voce": "La data di ultimo aggiornamento di ogni pagina è in fondo alla pagina stessa.",
-     "t": "La data di ultimo aggiornamento di ogni pagina è in fondo alla pagina stessa.",
-     "hash": "fd987f4ce23f",
-     "n": "ladatadiultimoaggiornamentodiognipaginaèinfondoallapaginastessa"
-    },
-    {
-     "tipo": "h2",
-     "dom": "Come è stato scritto",
-     "id": "p3",
-     "voce": "Come è stato scritto.",
-     "t": "Come è stato scritto.",
-     "hash": "e7782fc1220b",
-     "n": "comeèstatoscritto"
-    },
-    {
-     "tipo": "p",
-     "dom": "I testi sono stati prodotti con l'aiuto dell'intelligenza artificiale e poi riletti e verificati dall'autore. Non è una formula di cortesia, è una cosa che conviene sapere:",
-     "id": "p4",
-     "voce": "I testi sono stati prodotti con l'aiuto dell'intelligenza artificiale e poi riletti e verificati dall'autore. Non è una formula di cortesia, è una cosa che conviene sapere:",
-     "t": "I testi sono stati prodotti con l'aiuto dell'intelligenza artificiale e poi riletti e verificati dall'autore. Non è una formula di cortesia, è una cosa che conviene sapere:",
-     "hash": "39de5f42454b",
-     "n": "itestisonostatiprodotticonlaiutodellintelligenzaartificialeepoirilettieverificatidallautorenonèunaformuladicortesiaèunacosacheconvienesapere"
-    },
-    {
-     "tipo": "li",
-     "dom": "gli esempi non sono inventati: ogni comando curl, ogni script Python e TypeScript e ogni output mostrato sono stati eseguiti contro l'API del corso, e i numeri che leggi vengono da lì;",
-     "id": "p5",
-     "voce": "gli esempi non sono inventati: ogni comando curl, ogni script Python e taip script e ogni output mostrato sono stati eseguiti contro l'a-pi-ai del corso, e i numeri che leggi vengono da lì;",
-     "t": "gli esempi non sono inventati: ogni comando curl, ogni script Python e TypeScript e ogni output mostrato sono stati eseguiti contro l'API del corso, e i numeri che leggi vengono da lì;",
-     "hash": "d188793b3d74",
-     "n": "gliesempinonsonoinventatiognicomandocurlogniscriptpythonetypescripteognioutputmostratosonostatieseguiticontrolapidelcorsoeinumericheleggivengonodalì"
-    },
-    {
-     "tipo": "li",
-     "dom": "restano possibili errori, imprecisioni e parti invecchiate: se ne trovi, scrivi;",
-     "id": "p6",
-     "voce": "restano possibili errori, imprecisioni e parti invecchiate: se ne trovi, scrivi;",
-     "t": "restano possibili errori, imprecisioni e parti invecchiate: se ne trovi, scrivi;",
-     "hash": "c25821bcfb5a",
-     "n": "restanopossibilierroriimprecisioniepartiinvecchiatesenetroviscrivi"
-    },
-    {
-     "tipo": "li",
-     "dom": "l'audio delle pagine è letto da una voce sintetica (sintesi vocale del tuo browser), non da una persona.",
-     "id": "p7",
-     "voce": "l'audio delle pagine è letto da una voce sintetica (sintesi vocale del tuo browser), non da una persona.",
-     "t": "l'audio delle pagine è letto da una voce sintetica (sintesi vocale del tuo browser), non da una persona.",
-     "hash": "7121e8a89693",
-     "n": "laudiodellepagineèlettodaunavocesinteticasintesivocaledeltuobrowsernondaunapersona"
+     "voce": "La data di ultimo aggiornamento di ogni pagina è in fondo alla pagina stessa. La lettura ad alta voce usa la sintesi vocale del browser: la voce è quella del tuo dispositivo.",
+     "t": "La data di ultimo aggiornamento di ogni pagina è in fondo alla pagina stessa. La lettura ad alta voce usa la sintesi vocale del browser: la voce è quella del tuo dispositivo.",
+     "hash": "7fb8bacc0e41",
+     "n": "ladatadiultimoaggiornamentodiognipaginaèinfondoallapaginastessalaletturaadaltavoceusalasintesivocaledelbrowserlavoceèquelladeltuodispositivo"
     },
     {
      "tipo": "h2",
      "dom": "Licenza",
-     "id": "p8",
+     "id": "p3",
      "voce": "Licenza.",
      "t": "Licenza.",
      "hash": "486095542948",
@@ -17423,7 +17369,7 @@
     {
      "tipo": "li",
      "dom": "Testi, spiegazioni, esercizi: Creative Commons Attribuzione 4.0 Internazionale (CC BY 4.0). Puoi copiarli, modificarli e usarli anche per scopi commerciali, citando l'autore e indicando se hai fatto modifiche.",
-     "id": "p9",
+     "id": "p4",
      "voce": "Testi, spiegazioni, esercizi: Creative Commons Attribuzione 4.0 Internazionale (CC BY 4.0). Puoi copiarli, modificarli e usarli anche per scopi commerciali, citando l'autore e indicando se hai fatto modifiche.",
      "t": "Testi, spiegazioni, esercizi: Creative Commons Attribuzione 4.0 Internazionale (CC BY 4.0). Puoi copiarli, modificarli e usarli anche per scopi commerciali, citando l'autore e indicando se hai fatto modifiche.",
      "hash": "39472984bb08",
@@ -17432,7 +17378,7 @@
     {
      "tipo": "li",
      "dom": "Codice: tutti i frammenti di codice del corso, il server di prova e il codice del sito sono rilasciati con licenza MIT: fanne quello che vuoi, tenendo la nota di copyright.",
-     "id": "p10",
+     "id": "p5",
      "voce": "Codice: tutti i frammenti di codice del corso, il server di prova e il codice del sito sono rilasciati con licenza MIT: fanne quello che vuoi, tenendo la nota di copyright.",
      "t": "Codice: tutti i frammenti di codice del corso, il server di prova e il codice del sito sono rilasciati con licenza MIT: fanne quello che vuoi, tenendo la nota di copyright.",
      "hash": "d3da8b7a1339",
@@ -17441,7 +17387,7 @@
     {
      "tipo": "li",
      "dom": "Il dataset della Libreria Aurora è inventato: nomi, email e ordini non appartengono a nessuno. Anche quello è MIT.",
-     "id": "p11",
+     "id": "p6",
      "voce": "Il dataset della Libreria Aurora è inventato: nomi, email e ordini non appartengono a nessuno. Anche quello è MIT.",
      "t": "Il dataset della Libreria Aurora è inventato: nomi, email e ordini non appartengono a nessuno. Anche quello è MIT.",
      "hash": "d000d0b3c185",
@@ -17450,7 +17396,7 @@
     {
      "tipo": "p",
      "dom": "Il testo completo delle due licenze è nei file LICENSE (MIT, codice) e LICENSE-CONTENUTI (CC BY 4.0, testi) del progetto.",
-     "id": "p12",
+     "id": "p7",
      "voce": "Il testo completo delle due licenze è nei file LICENSE (MIT, codice) e LICENSE-CONTENUTI (CC BY 4.0, testi) del progetto.",
      "t": "Il testo completo delle due licenze è nei file LICENSE (MIT, codice) e LICENSE-CONTENUTI (CC BY 4.0, testi) del progetto.",
      "hash": "0ca10a3c8d7d",
@@ -17459,7 +17405,7 @@
     {
      "tipo": "h2",
      "dom": "Strumenti usati",
-     "id": "p13",
+     "id": "p8",
      "voce": "Strumenti usati.",
      "t": "Strumenti usati.",
      "hash": "fada1c19490d",
@@ -17468,7 +17414,7 @@
     {
      "tipo": "tr",
      "dom": "Astro + Starlight il sito e la sua struttura MIT",
-     "id": "p14",
+     "id": "p9",
      "voce": "Strumento: Astro + Starlight; A cosa serve qui: il sito e la sua struttura; Licenza: MIT",
      "t": "Strumento: Astro + Starlight; A cosa serve qui: il sito e la sua struttura; Licenza: MIT",
      "hash": "8ac6a0ad2418",
@@ -17477,7 +17423,7 @@
     {
      "tipo": "tr",
      "dom": "Pagefind la ricerca interna, senza servizi esterni MIT",
-     "id": "p15",
+     "id": "p10",
      "voce": "Strumento: Pagefind; A cosa serve qui: la ricerca interna, senza servizi esterni; Licenza: MIT",
      "t": "Strumento: Pagefind; A cosa serve qui: la ricerca interna, senza servizi esterni; Licenza: MIT",
      "hash": "ed297712eede",
@@ -17486,7 +17432,7 @@
     {
      "tipo": "tr",
      "dom": "FastAPI e Pydantic il server di prova e la validazione MIT",
-     "id": "p16",
+     "id": "p11",
      "voce": "Strumento: FastAPI e Pydantic; A cosa serve qui: il server di prova e la validazione; Licenza: MIT",
      "t": "Strumento: FastAPI e Pydantic; A cosa serve qui: il server di prova e la validazione; Licenza: MIT",
      "hash": "ff87a5aad6cd",
@@ -17495,7 +17441,7 @@
     {
      "tipo": "tr",
      "dom": "SQLite (con FTS5) il database del dataset pubblico dominio",
-     "id": "p17",
+     "id": "p12",
      "voce": "Strumento: esse-qu-lait (con effe-ti-esse cinque); A cosa serve qui: il database del dataset; Licenza: pubblico dominio",
      "t": "Strumento: SQLite (con FTS5); A cosa serve qui: il database del dataset; Licenza: pubblico dominio",
      "hash": "8b0cb18ea372",
@@ -17504,7 +17450,7 @@
     {
      "tipo": "tr",
      "dom": "slowapi il limite di richieste al minuto MIT",
-     "id": "p18",
+     "id": "p13",
      "voce": "Strumento: slowapi; A cosa serve qui: il limite di richieste al minuto; Licenza: MIT",
      "t": "Strumento: slowapi; A cosa serve qui: il limite di richieste al minuto; Licenza: MIT",
      "hash": "81a4a4b45319",
@@ -17513,7 +17459,7 @@
     {
      "tipo": "tr",
      "dom": "Swagger UI la pagina /api/docs (servita dal sito, non da una CDN) Apache 2.0",
-     "id": "p19",
+     "id": "p14",
      "voce": "Strumento: Swagger UI; A cosa serve qui: la pagina /api/docs (servita dal sito, non da una CDN); Licenza: Apache 2.0",
      "t": "Strumento: Swagger UI; A cosa serve qui: la pagina /api/docs (servita dal sito, non da una CDN); Licenza: Apache 2.0",
      "hash": "8b8ff1a64994",
@@ -17522,7 +17468,7 @@
     {
      "tipo": "tr",
      "dom": "uvicorn esegue il server BSD 3 clausole",
-     "id": "p20",
+     "id": "p15",
      "voce": "Strumento: uvicorn; A cosa serve qui: esegue il server; Licenza: BSD 3 clausole",
      "t": "Strumento: uvicorn; A cosa serve qui: esegue il server; Licenza: BSD 3 clausole",
      "hash": "8658cee20a32",
@@ -17531,7 +17477,7 @@
     {
      "tipo": "h2",
      "dom": "Marchi: non siamo affiliati a nessuno",
-     "id": "p21",
+     "id": "p16",
      "voce": "Marchi: non siamo affiliati a nessuno.",
      "t": "Marchi: non siamo affiliati a nessuno.",
      "hash": "9795e36d464c",
@@ -17540,7 +17486,7 @@
     {
      "tipo": "p",
      "dom": "Il corso spiega strumenti altrui e li nomina per quello che sono. Questo corso non è affiliato, sponsorizzato, approvato né verificato da nessuna delle organizzazioni che li curano. Ogni nome e marchio appartiene al rispettivo titolare:",
-     "id": "p22",
+     "id": "p17",
      "voce": "Il corso spiega strumenti altrui e li nomina per quello che sono. Questo corso non è affiliato, sponsorizzato, approvato né verificato da nessuna delle organizzazioni che li curano. Ogni nome e marchio appartiene al rispettivo titolare:",
      "t": "Il corso spiega strumenti altrui e li nomina per quello che sono. Questo corso non è affiliato, sponsorizzato, approvato né verificato da nessuna delle organizzazioni che li curano. Ogni nome e marchio appartiene al rispettivo titolare:",
      "hash": "608ef95b9c57",
@@ -17549,7 +17495,7 @@
     {
      "tipo": "li",
      "dom": "Python — Python Software Foundation",
-     "id": "p23",
+     "id": "p18",
      "voce": "Python — Python Software Foundation",
      "t": "Python — Python Software Foundation",
      "hash": "45a22e0afe08",
@@ -17558,7 +17504,7 @@
     {
      "tipo": "li",
      "dom": "JavaScript — Oracle Corporation",
-     "id": "p24",
+     "id": "p19",
      "voce": "giava script — Oracle Corporation",
      "t": "JavaScript — Oracle Corporation",
      "hash": "ef1d74d19b66",
@@ -17567,7 +17513,7 @@
     {
      "tipo": "li",
      "dom": "TypeScript e Visual Studio Code — Microsoft Corporation",
-     "id": "p25",
+     "id": "p20",
      "voce": "taip script e Visual Studio Code — Microsoft Corporation",
      "t": "TypeScript e Visual Studio Code — Microsoft Corporation",
      "hash": "60bb8f92617d",
@@ -17576,7 +17522,7 @@
     {
      "tipo": "li",
      "dom": "Node.js e npm — OpenJS Foundation",
-     "id": "p26",
+     "id": "p21",
      "voce": "Node.js e enne-pi-emme — OpenJS Foundation",
      "t": "Node.js e npm — OpenJS Foundation",
      "hash": "ec8ecbc0d84f",
@@ -17585,7 +17531,7 @@
     {
      "tipo": "li",
      "dom": "curl — Daniel Stenberg e il progetto curl",
-     "id": "p27",
+     "id": "p22",
      "voce": "curl — Daniel Stenberg e il progetto curl",
      "t": "curl — Daniel Stenberg e il progetto curl",
      "hash": "6bbe51665e50",
@@ -17594,7 +17540,7 @@
     {
      "tipo": "li",
      "dom": "jq — il progetto jq",
-     "id": "p28",
+     "id": "p23",
      "voce": "gei-qu — il progetto gei-qu",
      "t": "jq — il progetto jq",
      "hash": "cc4076fd17f4",
@@ -17603,7 +17549,7 @@
     {
      "tipo": "li",
      "dom": "SQLite — SQLite Consortium",
-     "id": "p29",
+     "id": "p24",
      "voce": "esse-qu-lait — esse-qu-lait Consortium",
      "t": "SQLite — SQLite Consortium",
      "hash": "d80f8839eb85",
@@ -17612,7 +17558,7 @@
     {
      "tipo": "li",
      "dom": "FastAPI, Pydantic, Astro, Starlight, ajv, zod — i rispettivi autori e progetti",
-     "id": "p30",
+     "id": "p25",
      "voce": "FastAPI, Pydantic, Astro, Starlight, ajv, zod — i rispettivi autori e progetti",
      "t": "FastAPI, Pydantic, Astro, Starlight, ajv, zod — i rispettivi autori e progetti",
      "hash": "c711c2da9108",
@@ -17621,7 +17567,7 @@
     {
      "tipo": "li",
      "dom": "GitHub — GitHub, Inc. (Microsoft)",
-     "id": "p31",
+     "id": "p26",
      "voce": "GitHub — GitHub, Inc. (Microsoft)",
      "t": "GitHub — GitHub, Inc. (Microsoft)",
      "hash": "a9d1facef7b2",
@@ -17630,7 +17576,7 @@
     {
      "tipo": "p",
      "dom": "Le citazioni di nomi, comandi e messaggi d'errore servono a spiegare come funzionano quegli strumenti: è uso lecito a fini didattici e di riferimento.",
-     "id": "p32",
+     "id": "p27",
      "voce": "Le citazioni di nomi, comandi e messaggi d'errore servono a spiegare come funzionano quegli strumenti: è uso lecito a fini didattici e di riferimento.",
      "t": "Le citazioni di nomi, comandi e messaggi d'errore servono a spiegare come funzionano quegli strumenti: è uso lecito a fini didattici e di riferimento.",
      "hash": "6f980663eea8",
@@ -17639,7 +17585,7 @@
     {
      "tipo": "h2",
      "dom": "Il server di prova",
-     "id": "p33",
+     "id": "p28",
      "voce": "Il server di prova.",
      "t": "Il server di prova.",
      "hash": "77b70148f28c",
@@ -17648,7 +17594,7 @@
     {
      "tipo": "p",
      "dom": "/api/v1 è un server didattico, non un servizio: i dati sono inventati, le copie private (sandbox) scadono dopo poche ore, c'è un limite di richieste al minuto e l'API resta spenta quando nessuno la usa (si accende da Attiva l'API di prova). Non va usato come backend di nient'altro, e può cambiare o sparire senza preavviso.",
-     "id": "p34",
+     "id": "p29",
      "voce": "/api/v1 è un server didattico, non un servizio: i dati sono inventati, le copie private (sandbox) scadono dopo poche ore, c'è un limite di richieste al minuto e l'a-pi-ai resta spenta quando nessuno la usa (si accende da Attiva l'a-pi-ai di prova). Non va usato come backend di nient'altro, e può cambiare o sparire senza preavviso.",
      "t": "/api/v1 è un server didattico, non un servizio: i dati sono inventati, le copie private (sandbox) scadono dopo poche ore, c'è un limite di richieste al minuto e l'API resta spenta quando nessuno la usa (si accende da Attiva l'API di prova). Non va usato come backend di nient'altro, e può cambiare o sparire senza preavviso.",
      "hash": "58598a7379b7",
