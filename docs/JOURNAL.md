@@ -32,3 +32,9 @@ Informazioni restano autore, licenza, crediti e privacy. Le due note su `node:sq
 dicevano "verificato con Node 22.23" / "sperimentale" sono diventate contenuto normale con il
 link alla documentazione ufficiale di Node. Corretta anche la frase della Presentazione che
 offriva ancora "la voce generata sul server" (Piper non c'è più).
+
+## 28/10/2026 — Sito aperto al pubblico
+Giuseppe ha deciso di aprire il corso senza password (i link sono nel CV letto dalla commissione
+del Comune); il Controller ha tolto `basic_auth` dal Caddyfile. Regola scritta in CLAUDE.md:
+non rimetterla, non toccare Caddy nelle pubblicazioni, e dopo ogni pubblicazione verificare con
+curl che le pagine rispondano 200 senza credenziali. La password resta solo per accendere l'API.

@@ -5,6 +5,13 @@ prova. Tutto vive in questa cartella: `site/` (Astro Starlight), `api/` (FastAPI
 `deploy/` (systemd + Caddy), `.claude/skills/` (skill locali). Pubblico:
 https://corso-api-json.giuseppebosi.com — l'API di prova risponde su `/api/v1`, Swagger su `/api/docs`.
 
+**Il sito è aperto a tutti, senza password** (decisione di Giuseppe del 28/10/2026: i link sono
+nel CV letto dalla commissione del Comune). Il `basic_auth` è stato tolto dal Caddyfile dal
+Controller: **non rimetterlo**. Nelle pubblicazioni non si tocca Caddy, e **dopo ogni
+pubblicazione si verifica che le pagine rispondano 200 senza password**:
+`for u in / /presentazione/ /json/01-cos-e-json/ /crediti/; do curl -s -o /dev/null -w "%{http_code} $u\n" https://corso-api-json.giuseppebosi.com$u; done`
+La password resta solo per **accendere l'API di prova** dalla pagina `/api-attiva/`.
+
 ## Regole (valgono sempre)
 
 1. **Prima cerca una skill.** Locali in `.claude/skills/`; poi online con
