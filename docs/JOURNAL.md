@@ -46,3 +46,15 @@ nome sta sotto il titolo del corso, dentro la barra, che Starlight tiene fissa i
 480 px titolo e nome rimpiccioliscono per entrare nei 390 px.
 Pubblicazione: il servizio serve `/opt/corso-api-json/site/dist`, quindi per il solo sito basta
 l'rsync di `dist` (niente riavvio, niente Caddy). Verifica con `site/tests/probe-autore.mjs`.
+
+## 29/10/2026 — Visibilità per motori di ricerca e IA
+Piano approvato da Giuseppe. Nessun noindex c'era (né meta né header in Caddy): Caddy non toccato.
+Aggiunti come pagine Astro generate dai contenuti (`site/src/pages/`, elenco comune in
+`site/src/lib/pagine.ts`): `robots.txt` (tutto permesso, anche GPTBot, ClaudeBot, PerplexityBot,
+Google-Extended), `sitemap.xml` (41 pagine + home), `llms.txt` (formato llmstxt.org) e
+`llms-full.txt` (testo integrale; i tag dei componenti interattivi tolti, i blocchi `<Curl>`
+lasciati perché contengono il comando e la spiegazione delle opzioni). Title, description,
+canonical e Open Graph li genera già Starlight su ogni pagina. JSON-LD `Course` in `head` con
+autore Prof. Giuseppe Bosi e link a www.giuseppebosi.com; LinkedIn non messo finché la chat
+Curriculum non comunica l'indirizzo definitivo. Piè di pagina: nome dell'autore cliccabile e
+link agli altri corsi pubblici (corso-rag, corso-llamacpp).

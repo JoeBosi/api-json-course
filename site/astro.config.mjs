@@ -15,6 +15,24 @@ export default defineConfig({
 			defaultLocale: 'root',
 			locales: { root: { label: 'Italiano', lang: 'it' } },
 			customCss: ['./src/styles/custom.css'],
+			head: [
+				{
+					tag: 'script',
+					attrs: { type: 'application/ld+json' },
+					content: JSON.stringify({
+						'@context': 'https://schema.org',
+						'@type': 'Course',
+						name: 'Corso JSON & API: da 0 a esperto',
+						description: 'Corso gratuito in italiano su JSON in Python e TypeScript/JavaScript e sull\'interrogazione di database tramite API HTTP, con un server di prova pubblico.',
+						url: 'https://corso-api-json.giuseppebosi.com/',
+						inLanguage: 'it',
+						isAccessibleForFree: true,
+						license: 'https://creativecommons.org/licenses/by/4.0/',
+						author: { '@type': 'Person', name: 'Giuseppe Bosi', honorificPrefix: 'Prof.', url: 'https://www.giuseppebosi.com' },
+						provider: { '@type': 'Person', name: 'Giuseppe Bosi', url: 'https://www.giuseppebosi.com' },
+					}),
+				},
+			],
 			lastUpdated: true,
 			pagination: true,
 			sidebar: [
