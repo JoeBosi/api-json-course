@@ -1,0 +1,276 @@
+---
+title: "2. curl from A to Z"
+description: "All the curl options you need to work with a JSON API, explained one by one: -s -i -v -X -H -d --json -o -w -G, quoting, variables, heredocs, jq."
+---
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Prova from '../../../../components/Prova.astro';
+import Curl from '../../../../components/Curl.astro';
+
+## Goals
+
+- Use `curl` confidently to **read** (GET) and **write** (POST/PUT/PATCH/DELETE) on a JSON API.
+- Know what every option you will see in the course does, and recognize it in the examples of any documentation.
+- Master the shell syntax around curl: quotes, `\` to continue on a new line, variables, heredocs, pipes.
+- Format, save and inspect responses.
+
+## Theory
+
+`curl` (*client URL*) has existed since 1998, comes preinstalled on Linux, macOS and Windows 10/11, and remains the most direct way to talk to an API: no library, no language, just the request. There are many options (more than 250) but for JSON APIs about twenty are enough. Check your version:
+
+```bash
+curl --version
+# curl 8.5.0 (x86_64-pc-linux-gnu) libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 …
+```
+
+The first line gives the version (here **8.5.0**) and the supported protocols/compressions. You need at least **7.82** (March 2022) for the `--json` option; with older versions you use `-H` + `-d`, as we will see.
+
+### How to read a curl command
+
+```
+curl [opzioni] URL
+```
+
+- **Short** options have one dash and one letter (`-s`, `-X`), **long** ones two dashes and a word (`--silent`, `--request`). They are equivalent: `-X POST` = `--request POST`.
+- Some options take an **argument** (`-X POST`, `-H 'Accept: …'`), others do not (`-s`, `-i`). Those without an argument can be merged: `-si` = `-s -i`.
+- The URL can go anywhere, but for readability put it last.
+- A long command is split over several lines with `\` at the end of each line (**no spaces after the `\`**).
+
+### Quotes: the golden rule
+
+curl never sees the quotes: the **shell** does, and uses them to work out where each argument starts and ends.
+
+| Written as | Behavior |
+|---|---|
+| `'…'` single | **literal** text: `$`, `"`, `\` stay as they are. Ideal for JSON: `-d '{"title": "x"}'` |
+| `"…"` double | the shell **expands** `$VARIABLES` and `$(commands)`. Needed when you have to insert a token: `-H "Authorization: Bearer $TOKEN"` |
+| none | only for arguments with no spaces or special characters (`&`, `?`, `*` are special!) |
+
+A URL with `?` and `&` must **always** be quoted, otherwise the shell takes `&` as "run in the background" and the command breaks.
+
+## The options, one by one
+
+### 1. Reading: `-s`, `-S`, `-i`, `-I`, `-v`
+
+<Curl cmd={`curl -sS -i 'https://corso-api-json.giuseppebosi.com/api/v1/books?limit=1'`} spiega={[
+  ['-s', '<em>silent</em>: no progress bar and no messages'],
+  ['-S', '<em>show-error</em>: but if there is an error (DNS, connection, TLS) show it anyway. <code>-sS</code> is the standard pair in scripts'],
+  ['-i', '<em>include</em>: also prints the status line and the response headers, before the body'],
+  ["'https://…?limit=1'", 'URL in single quotes because it contains <code>?</code>; <code>limit=1</code> is a query parameter'],
+]} />
+
+```
+HTTP/1.1 200 OK
+content-type: application/json
+content-length: 564
+x-request-id: 6d703371874f
+cache-control: no-store
+
+{"items":[{"id":1,"title":"Il silenzio di Ustica",…}],"meta":{"page":1,"limit":1,"total":80,"pages":80},"links":{…}}
+```
+
+Variants:
+
+- `-I` (capital i, `--head`) makes a `HEAD` request: **only** the headers, no body. Careful: **it does not work on this API**, because FastAPI does not create `HEAD` routes and every `/api/v1/...` answers `405 Method Not Allowed`. Try it on the site pages (`curl -s -I https://corso-api-json.giuseppebosi.com/`); to see the API headers use `-D - -o /dev/null`, which makes a normal `GET`.
+- `-v` (`--verbose`) also shows the **request** (`>`), the headers received (`<`) and the TLS negotiation. You saw it in chapter 1. `-vv` adds nothing; `--trace-ascii file` is the next level.
+
+### 2. The method: `-X`
+
+<Curl cmd={`curl -sS -X POST https://corso-api-json.giuseppebosi.com/api/v1/sandbox`} spiega={[
+  ['-X POST', '<em>--request</em>: use the <code>POST</code> method instead of <code>GET</code>. Works for <code>PUT</code>, <code>PATCH</code>, <code>DELETE</code>, <code>HEAD</code>…'],
+  ['…/sandbox', 'no body: this endpoint does not want one. It answers <code>201 Created</code> with the token'],
+]} />
+
+```json
+{"token":"sb_7cyEmMkco216unjxIBct6XTQ","created_at":"2026-09-18T20:03:39Z","expires_at":"2026-09-19T02:03:39Z","how_to_use":{"header":"Authorization: Bearer sb_7cyEmMkco216unjxIBct6XTQ","alt_header":"X-Sandbox-Token: sb_7cyEmMkco216unjxIBct6XTQ"}}
+```
+
+<Aside type="note">
+When you use `-d` (a body), curl switches to `POST` **by itself**: writing `-X POST -d …` is redundant but harmless. `-X` is really needed for `PUT`, `PATCH`, `DELETE`, or for a `GET` with a body (rare and discouraged).
+</Aside>
+
+<Prova method="POST" path="/api/v1/sandbox" titolo="create a sandbox (and look at the token in the response)" />
+
+### 3. Saving a value in a variable: `$(…)`
+
+The token has to be reused in all the following commands. In bash/zsh:
+
+<Curl cmd={`TOKEN=$(curl -sS -X POST https://corso-api-json.giuseppebosi.com/api/v1/sandbox | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+echo "$TOKEN"`} spiega={[
+  ['TOKEN=$( … )', 'the shell runs what is inside the parentheses and puts its output into the <code>TOKEN</code> variable. No spaces around <code>=</code>'],
+  ['| python3 -c …', 'the pipe sends the JSON to a tiny Python script that prints only the <code>token</code> field. With jq: <code>| jq -r .token</code> (<code>-r</code> = no quotes)'],
+  ['echo "$TOKEN"', 'check: prints <code>sb_…</code>. Double quotes because we want the expansion'],
+]} />
+
+From here on `$TOKEN` is valid in the current terminal session (if you close it, you lose it: create another sandbox).
+
+### 4. Headers: `-H`
+
+<Curl cmd={`curl -sS -H "Authorization: Bearer $TOKEN" https://corso-api-json.giuseppebosi.com/api/v1/sandbox/me`} spiega={[
+  ['-H "Authorization: Bearer $TOKEN"', '<em>--header</em>: adds a header to the request, in the form <code>Name: value</code>. Double quotes to expand <code>$TOKEN</code>. Repeat <code>-H</code> for each header'],
+  ['/sandbox/me', 'answers 200 with who you are, or 401 without a token (or with a wrong one)'],
+]} />
+
+```json
+{"authenticated":true,"token_prefix":"sb_7cyEm…","expires_at":"2026-09-19T02:03:39Z"}
+```
+
+Other useful headers with `-H`: `-H 'Accept: application/json'`, `-H 'Content-Type: application/json'`, `-H 'If-None-Match: "etag"'`. To **remove** a header curl adds by itself: `-H 'User-Agent:'` (name and colon, empty value).
+
+### 5. The body: `-d`, `--data-raw`, `--json`
+
+<Curl cmd={`curl -sS -X POST https://corso-api-json.giuseppebosi.com/api/v1/books \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H 'Content-Type: application/json' \\
+  -d '{"title": "Il mio primo libro", "author_id": 3, "category_id": 2, "price": 12.5}'`} spiega={[
+  ['\\ at the end of a line', 'continues the command on the next line. It must be the last character on the line'],
+  ["-H 'Content-Type: application/json'", 'tells the server the body is JSON. Without it, curl sends <code>application/x-www-form-urlencoded</code> (the HTML form format) and many servers refuse it'],
+  ["-d '{…}'", '<em>--data</em>: the request body, in single quotes so the JSON double quotes stay intact. Implies <code>POST</code>'],
+]} />
+
+```
+HTTP/1.1 201 Created
+location: https://corso-api-json.giuseppebosi.com/api/v1/books/81
+
+{"id":81,"title":"Il mio primo libro","isbn":"978-88-sandbox-81","author_id":3,"category_id":2,"price":12.5,…}
+```
+
+Three details about `-d`:
+
+- `-d @file.json` reads the body from a file (`@` = "from the file"). `-d @-` reads it from standard input.
+- `-d` **strips newlines** from the data; `--data-raw` sends it as it is and does not interpret `@`. For JSON it makes no difference; if your body starts with `@`, use `--data-raw`.
+- With curl ≥ 7.82, **`--json '{…}'`** is the shortcut for `-d '{…}' -H 'Content-Type: application/json' -H 'Accept: application/json'`. Handy, but the course examples use the explicit form, which works everywhere.
+
+### 6. Long bodies: heredoc
+
+For JSON over several lines, avoid fighting with quotes: use a **heredoc** and `-d @-`.
+
+<Curl cmd={`curl -sS -X POST https://corso-api-json.giuseppebosi.com/api/v1/orders \\
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \\
+  -d @- <<'EOF'
+{
+  "customer_id": 1,
+  "items": [{"book_id": 5, "quantity": 2}, {"book_id": 9, "quantity": 1}],
+  "shipping_address": {"street": "Via Roma 1", "city": "Milano", "zip": "20100"}
+}
+EOF`} spiega={[
+  ['-d @-', 'read the body from standard input'],
+  ["<<'EOF'", 'heredoc: everything that follows, up to the <code>EOF</code> line, goes to standard input. With <code>&#39;EOF&#39;</code> in quotes the shell does <strong>not</strong> touch the content (no expansion of <code>$</code>)'],
+  ['EOF', 'the line that closes the heredoc: on its own, with no spaces before it'],
+]} />
+
+Response: `201 Created` with the full order, `items` and `total` included. (We will do it again calmly in chapter 6.)
+
+### 7. Query parameters: `-G` and `--data-urlencode`
+
+Writing `?q=le%20estati&limit=5` by hand is fragile. Let curl encode it:
+
+<Curl cmd={`curl -sS -G https://corso-api-json.giuseppebosi.com/api/v1/books \\
+  --data-urlencode 'q=le estati' --data-urlencode 'limit=5' --data-urlencode 'sort=-price'`} spiega={[
+  ['-G', '<em>--get</em>: the data passed with <code>-d</code>/<code>--data-urlencode</code> goes into the <strong>query string</strong> instead of the body (and the method stays GET)'],
+  ["--data-urlencode 'q=le estati'", 'encodes the value: the space becomes <code>%20</code>. One option per parameter. The final URL is <code>/books?q=le%20estati&amp;limit=5&amp;sort=-price</code>'],
+]} />
+
+### 8. Saving the response: `-o`, `-O`
+
+<Curl cmd={`curl -sS -o libri.csv https://corso-api-json.giuseppebosi.com/api/v1/export/books.csv
+head -3 libri.csv`} spiega={[
+  ['-o libri.csv', '<em>--output</em>: writes the body to the file instead of the terminal'],
+  ['-O', '(not used here) <em>--remote-name</em>: saves with the name taken from the URL, that is <code>books.csv</code>'],
+  ['head -3', 'shows the first 3 lines of the file'],
+]} />
+
+```
+id,title,isbn,author_id,category_id,price,pages,published_year,language,in_stock,attributes,created_at,author_name,category
+1,Il silenzio di Ustica,978-88-81482-001-1,19,2,18.71,120,2002,it,1,"{""format"": ""brossura"", …}",2025-06-01T00:00:00Z,Laura Esposito,gialli
+2,TypeScript e Ferrara,978-88-30379-002-3,11,9,9.76,479,2013,it,1,"{…}",2024-12-18T00:00:00Z,Beatrice Colombo,informatica
+```
+
+`-o /dev/null` throws the body away: you use it when you only care about the status (point 9).
+
+### 9. Just the status: `-w` and `-o /dev/null`
+
+<Curl cmd={`curl -sS -o /dev/null -w '%{http_code} %{time_total}s %{size_download} byte\\n' \\
+  https://corso-api-json.giuseppebosi.com/api/v1/books/9999`} spiega={[
+  ['-o /dev/null', 'discards the body'],
+  ["-w '…'", '<em>--write-out</em>: after the request prints the given string, replacing the <code>%{…}</code> variables: <code>http_code</code> (status), <code>time_total</code> (seconds), <code>size_download</code> (body bytes). <code>\\n</code> adds the final newline'],
+]} />
+
+```
+404 0.031s 65 byte
+```
+
+Perfect in scripts: `if [ "$(curl -s -o /dev/null -w '%{http_code}' URL)" = "200" ]; then …`.
+
+### 10. Redirects, compression, timeouts, retries, User-Agent
+
+<Curl cmd={`curl -sS -L --compressed --max-time 10 --retry 3 --retry-delay 2 \\
+  -A 'corso-json/1.0' -o /dev/null -w '%{http_code}\\n' \\
+  https://corso-api-json.giuseppebosi.com/json/01-cos-e-json`} spiega={[
+  ['-L', '<em>--location</em>: follows redirects (3xx). Without it, curl stops at the 307 and shows an empty body. Here <code>/json/01-cos-e-json</code> redirects to the version with a trailing <code>/</code>'],
+  ['--compressed', 'asks for a compressed response (<code>Accept-Encoding: gzip, br, zstd</code>) and decompresses it. Fewer bytes on the wire'],
+  ['--max-time 10', 'gives up after 10 seconds in total (there is also <code>--connect-timeout</code> for the connection alone)'],
+  ['--retry 3 --retry-delay 2', 'retries up to 3 times, waiting 2 s, on transient errors (timeouts, 5xx, 429). It does <strong>not</strong> retry on normal 4xx'],
+  ["-A 'corso-json/1.0'", '<em>--user-agent</em>: how you introduce yourself. Public APIs often ask for an identifiable UA'],
+]} />
+
+```
+200
+```
+
+### 11. HTTP Basic authentication: `-u`
+
+Not needed for this server (it uses Bearer), but you will find it in many APIs: `-u user:password` adds `Authorization: Basic <base64>`. With `-u user` (no password) curl asks for it interactively, so it does not end up in the shell history.
+
+### 12. Formatting and filtering: `python3 -m json.tool` and `jq`
+
+<Curl cmd={`curl -sS 'https://corso-api-json.giuseppebosi.com/api/v1/books?limit=3' | jq '.items[] | {id, title, price}'`} spiega={[
+  ['| jq', '<code>jq</code> is a command-line JSON processor (to install: <code>apt install jq</code>, <code>brew install jq</code>, <code>winget install jqlang.jq</code>)'],
+  ["'.items[] | {id, title, price}'", 'a jq program: take the <code>items</code> key, iterate over the array (<code>[]</code>), and for each element build an object with only those three fields'],
+]} />
+
+```json
+{ "id": 1, "title": "Il silenzio di Ustica", "price": 18.71 }
+{ "id": 2, "title": "TypeScript e Ferrara", "price": 9.76 }
+{ "id": 3, "title": "Il cervello e Matera", "price": 31.16 }
+```
+
+Without jq: `| python3 -m json.tool` reformats everything (no filtering), and it is already installed wherever Python is. Chapter 10 of Section 1 covers jq in depth.
+
+## Try it now
+
+The **Copy as curl** button of every widget in the course generates the equivalent command with the options you have just learned (`-i -X -H -d`):
+
+<Prova path="/api/v1/books?limit=2&sort=-price" titolo="then press «Copy as curl» and paste it in the terminal" />
+
+## Exercise
+
+Write **a single** curl command that: (a) asks for the books in the `cucina` category sorted by ascending price, at most 5, encoding the parameters with `--data-urlencode`; (b) shows the response headers; (c) prints the total time at the end. Then a second command that saves the same result to `cucina.json` and prints only the status.
+
+<details>
+<summary>Solution</summary>
+
+```bash
+curl -sS -i -G https://corso-api-json.giuseppebosi.com/api/v1/books \
+  --data-urlencode 'category=cucina' --data-urlencode 'sort=price' --data-urlencode 'limit=5' \
+  -w '\ntempo: %{time_total}s\n'
+
+curl -sS -G https://corso-api-json.giuseppebosi.com/api/v1/books \
+  --data-urlencode 'category=cucina' --data-urlencode 'sort=price' --data-urlencode 'limit=5' \
+  -o cucina.json -w '%{http_code}\n'
+```
+
+The second one prints `200` and creates `cucina.json` (check with `python3 -m json.tool cucina.json | head`).
+</details>
+
+## Common mistakes
+
+- **Unquoted URL with `&`**: `curl …/books?a=1&b=2` → the shell sends curl to the background with `a=1` and then runs `b=2`. Put the URL inside `'…'`.
+- **`$TOKEN` in single quotes**: `-H 'Authorization: Bearer $TOKEN'` sends the literal string `$TOKEN` → 401. Use double quotes.
+- **A space after `\`** at the end of a line: the next line runs as a command of its own.
+- **Forgetting `-L`** and believing the response is empty: it was a redirect.
+- **`-d` without `Content-Type`**: the server receives a form, not JSON → 422.
+- **A JSON body with single quotes or a trailing comma**: it is not valid JSON; the server answers 422 with `code: "validation_error"` and, inside `details[0]`, `type: "json_invalid"` and the position.
+
+## Summary
+
+`-sS` for cleanliness, `-i`/`-v` to see, `-X` for the method, `-H` for headers, `-d` (+ `Content-Type`) for the body, `-G --data-urlencode` for the query, `-o`/`-w` to save and measure, `-L --compressed --max-time --retry` for robustness. And the shell does its part: single quotes for JSON, double quotes for variables. The [cheatsheet](/en/riferimento/curl/) gathers it all on one page. Next chapter: the same GET, but from Python and TypeScript.

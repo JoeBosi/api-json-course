@@ -1,0 +1,310 @@
+---
+title: "16. Robust clients"
+description: "Timeouts, retries with exponential backoff that respect Retry-After, typing the responses with pydantic and zod, logging with X-Request-Id, idempotence: a LibreriaClient class in Python and TypeScript."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../../components/Prova.astro';
+import Curl from '../../../../components/Curl.astro';
+
+## Goals
+
+- Put a **timeout** on every request and know what to do when it fires.
+- Retry **only** when it makes sense (network, 429, 5xx), with growing waits and respecting `Retry-After`.
+- Validate responses with a **model** (pydantic / zod) instead of trusting the JSON.
+- Log `X-Request-Id` to trace a call in the server logs.
+- Understand **idempotence**: which requests you can repeat without fear.
+
+## Theory
+
+A client that "works" in the demo and a **robust** client in production differ in five points.
+
+### 1. Timeouts, always
+
+Without a timeout a request can hang for minutes (a stuck server, a network losing packets). `httpx` without `timeout` uses 5 seconds; `fetch` **has no timeout** by default. Rule: an explicit timeout, in the order of seconds, everywhere.
+
+### 2. Retries with backoff
+
+Not every error deserves a new attempt:
+
+| Error | Retry? | Why |
+|---|---|---|
+| timeout, connection refused, DNS | yes | transient |
+| `429` | yes, after `Retry-After` | the server told you when |
+| `500`, `502`, `503`, `504` | yes, a few times | the server (or the proxy) is having trouble |
+| `400`, `401`, `403`, `404`, `409`, `422` | **no** | repeating the same request gives the same result: something has to change |
+
+The wait between attempts grows (**exponential backoff**: 0.5 s, 1 s, 2 s, 4 s) with a bit of randomness (**jitter**), so that a thousand clients failing together do not all retry at the same instant.
+
+### 3. Typing the responses
+
+`r.json()` returns "something". A model (`pydantic` in Python, `zod` in TypeScript) turns that something into an object with known fields and checked types: if the API changes or answers something unexpected, the error fires **immediately and close to the cause**, not three functions later with a `KeyError` or an `undefined`. In Section 1 (chapters 7 and 8) you saw the tools; here you use them at the boundary between your application and the world.
+
+### 4. Traceability
+
+Every response from the test server has an `X-Request-Id`. If you put it in your logs (and in the errors you show), you can ask "what happened to request `c759f5c4d347`?" and whoever runs the server can look it up. Serious APIs all do this (`X-Request-Id`, `X-Amzn-RequestId`, `cf-ray`…).
+
+### 5. Idempotence
+
+A request is **idempotent** if doing it twice has the same effect as doing it once: `GET`, `PUT` (replaces), `DELETE` (deleting twice = deleted), `PATCH` with absolute values (`{"price": 12}`). **`POST` is not**: if your retry repeats a `POST /orders` that succeeded but whose response got lost, you have **two orders**. That is why automatic retries are safe only on idempotent requests; for `POST`s you need an idempotency key (the `Idempotency-Key` header, which many payment APIs support) or a check before repeating.
+
+<Aside type="tip" title="The safest retry is the one you do not need">
+Reasonable timeouts and reused connections reduce failures upstream. The retry is the safety net, not the plan.
+</Aside>
+
+## curl, explained option by option
+
+curl itself has the options for robust use:
+
+<Curl cmd={`curl -s --connect-timeout 5 --max-time 15 \\
+  --retry 3 --retry-delay 1 --retry-all-errors \\
+  -w '\\nstatus=%{http_code} tentativi=%{num_retries} tempo=%{time_total}s\\n' \\
+  -D - https://corso-api-json.giuseppebosi.com/api/v1/books/7 | grep -i 'x-request-id\\|^{\\|status='`} spiega={[
+  ['--connect-timeout 5', 'at most 5 seconds to open the connection'],
+  ['--max-time 15', "at most 15 seconds for the whole request, response included"],
+  ['--retry 3', 'up to 3 new attempts on transient errors (curl on its own considers 429, 500, 502, 503, 504 and timeouts)'],
+  ['--retry-delay 1', 'a fixed 1 s wait between attempts (without it, curl uses a doubling backoff: 1, 2, 4… s)'],
+  ['--retry-all-errors', 'also retries on other HTTP and network errors. Careful: on a POST it can duplicate!'],
+  ['%{num_retries}', 'how many extra attempts it made'],
+  ['grep …', 'shows only <code>x-request-id</code>, the JSON body and the summary line'],
+]} />
+
+```text
+x-request-id: 3eff19594867
+{"id":7,"title":"Oltre Trieste",…}
+status=200 tentativi=0 tempo=0.06s
+```
+
+For a **PATCH** (idempotent) retrying is safe: `curl --retry 3 -X PATCH … -d '{"price": 19.9}'`. For a **POST** it is not: use `--retry` only if the API supports an idempotency key.
+
+## Python and TypeScript
+
+A complete `LibreriaClient` class: reused connection, timeouts, retries with backoff and `Retry-After`, typed errors with `X-Request-Id`, validated responses, automatic pagination.
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx pydantic   →   python3 client.py
+import logging
+import random
+import time
+
+import httpx
+from pydantic import BaseModel
+
+BASE = "https://corso-api-json.giuseppebosi.com/api/v1"
+log = logging.getLogger("libreria")
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+
+
+class Book(BaseModel):            # solo i campi che ci servono: il resto viene ignorato
+    id: int
+    title: str
+    price: float
+    author_id: int
+    in_stock: bool
+
+
+class ApiError(Exception):
+    def __init__(self, status: int, code: str, message: str, request_id: str | None):
+        super().__init__(f"{status} {code}: {message} (request {request_id})")
+        self.status, self.code, self.request_id = status, code, request_id
+
+
+class LibreriaClient:
+    """Client con timeout, retry con backoff esponenziale e tipizzazione delle risposte."""
+
+    def __init__(self, base: str = BASE, token: str | None = None, timeout: float = 10.0, retries: int = 4):
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        self.http = httpx.Client(base_url=base, timeout=timeout, headers=headers)  # riusa la connessione
+        self.retries = retries
+
+    def _request(self, method: str, path: str, **kw) -> httpx.Response:
+        for tentativo in range(self.retries + 1):
+            try:
+                r = self.http.request(method, path, **kw)
+            except httpx.TransportError as e:            # rete giù, timeout: ritenta
+                if tentativo == self.retries:
+                    raise
+                attesa = 0.5 * 2**tentativo + random.uniform(0, 0.3)
+                log.warning("%s %s: %s, ritento tra %.1fs", method, path, e, attesa)
+                time.sleep(attesa)
+                continue
+            if r.status_code == 429 or r.status_code >= 500:
+                if tentativo == self.retries:
+                    break
+                attesa = float(r.headers.get("Retry-After", 0.5 * 2**tentativo))
+                log.warning("%s %s -> %s, ritento tra %.1fs", method, path, r.status_code, attesa)
+                time.sleep(attesa)
+                continue
+            if r.is_error:                                # 4xx: non ritentare, spiegare
+                err = r.json().get("error", {})
+                raise ApiError(r.status_code, err.get("code", "error"), err.get("message", r.text), r.headers.get("X-Request-Id"))
+            return r
+        raise ApiError(r.status_code, "retry_exhausted", "troppi tentativi", r.headers.get("X-Request-Id"))
+
+    def book(self, book_id: int) -> Book:
+        return Book.model_validate(self._request("GET", f"/books/{book_id}").json())
+
+    def books(self, **filtri) -> list[Book]:
+        """Scorre tutte le pagine e restituisce la lista completa."""
+        out, page = [], 1
+        while True:
+            data = self._request("GET", "/books", params={**filtri, "page": page, "limit": 100}).json()
+            out += [Book.model_validate(b) for b in data["items"]]
+            if not data["links"]["next"]:
+                return out
+            page += 1
+
+    def set_price(self, book_id: int, price: float) -> Book:
+        # PUT/PATCH sono idempotenti: ripeterli in caso di dubbio non fa danni
+        return Book.model_validate(self._request("PATCH", f"/books/{book_id}", json={"price": price}).json())
+
+
+if __name__ == "__main__":
+    pubblico = LibreriaClient()
+    print(pubblico.book(7))
+    economici = pubblico.books(max_price=10, sort="price")
+    print(f"{len(economici)} libri sotto i 10 €; il primo: {economici[0].title}")
+    try:
+        pubblico.book(9999)
+    except ApiError as e:
+        print("gestito:", e)
+    token = httpx.post(f"{BASE}/sandbox").json()["token"]
+    privato = LibreriaClient(token=token)
+    print("nuovo prezzo:", privato.set_price(7, 19.9).price)
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// npm install zod   →   node --experimental-strip-types client.ts
+import { z } from "zod";
+
+const BASE = "https://corso-api-json.giuseppebosi.com/api/v1";
+
+const Book = z.object({ id: z.number(), title: z.string(), price: z.number(), author_id: z.number(), in_stock: z.boolean() });
+type Book = z.infer<typeof Book>;
+const Pagina = z.object({ items: z.array(Book), links: z.object({ next: z.string().nullable() }) });
+
+class ApiError extends Error {
+  status: number; code: string; requestId: string | null;
+  constructor(status: number, code: string, message: string, requestId: string | null) {
+    super(`${status} ${code}: ${message} (request ${requestId})`);
+    this.status = status; this.code = code; this.requestId = requestId;
+  }
+}
+
+const dormi = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+class LibreriaClient {
+  base: string; token?: string; timeoutMs: number; retries: number;
+  constructor(base = BASE, token?: string, timeoutMs = 10_000, retries = 4) {
+    this.base = base; this.token = token; this.timeoutMs = timeoutMs; this.retries = retries;
+  }
+
+  private async request(method: string, path: string, body?: unknown): Promise<Response> {
+    const headers: Record<string, string> = {};
+    if (this.token) headers.Authorization = `Bearer ${this.token}`;
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    let ultimo: Response | undefined;
+    for (let tentativo = 0; tentativo <= this.retries; tentativo++) {
+      let r: Response;
+      try {
+        r = await fetch(this.base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body),
+          signal: AbortSignal.timeout(this.timeoutMs) });          // il timeout di fetch
+      } catch (e) {                                                  // rete giù o timeout: ritenta
+        if (tentativo === this.retries) throw e;
+        const attesa = 500 * 2 ** tentativo + Math.random() * 300;
+        console.warn(`${method} ${path}: ${e}, ritento tra ${attesa | 0}ms`);
+        await dormi(attesa);
+        continue;
+      }
+      ultimo = r;
+      if (r.status === 429 || r.status >= 500) {
+        if (tentativo === this.retries) break;
+        const attesa = Number(r.headers.get("Retry-After") ?? 0.5 * 2 ** tentativo) * 1000;
+        console.warn(`${method} ${path} -> ${r.status}, ritento tra ${attesa}ms`);
+        await dormi(attesa);
+        continue;
+      }
+      if (!r.ok) {                                                   // 4xx: non ritentare, spiegare
+        const { error } = await r.json();
+        throw new ApiError(r.status, error?.code ?? "error", error?.message ?? r.statusText, r.headers.get("X-Request-Id"));
+      }
+      return r;
+    }
+    throw new ApiError(ultimo!.status, "retry_exhausted", "troppi tentativi", ultimo!.headers.get("X-Request-Id"));
+  }
+
+  async book(id: number): Promise<Book> { return Book.parse(await (await this.request("GET", `/books/${id}`)).json()); }
+
+  async books(filtri: Record<string, string | number> = {}): Promise<Book[]> {
+    const out: Book[] = [];
+    for (let page = 1; ; page++) {
+      const qs = new URLSearchParams({ ...Object.fromEntries(Object.entries(filtri).map(([k, v]) => [k, String(v)])), page: String(page), limit: "100" });
+      const data = Pagina.parse(await (await this.request("GET", `/books?${qs}`)).json());
+      out.push(...data.items);
+      if (!data.links.next) return out;
+    }
+  }
+
+  async setPrice(id: number, price: number): Promise<Book> {
+    return Book.parse(await (await this.request("PATCH", `/books/${id}`, { price })).json());   // idempotente
+  }
+}
+
+const pubblico = new LibreriaClient();
+console.log(await pubblico.book(7));
+const economici = await pubblico.books({ max_price: 10, sort: "price" });
+console.log(`${economici.length} libri sotto i 10 €; il primo: ${economici[0].title}`);
+try { await pubblico.book(9999); } catch (e) { console.log("gestito:", (e as Error).message); }
+const { token } = await (await fetch(`${BASE}/sandbox`, { method: "POST" })).json();
+const privato = new LibreriaClient(BASE, token);
+console.log("nuovo prezzo:", (await privato.setPrice(7, 19.9)).price);
+```
+</TabItem>
+</Tabs>
+
+Output:
+
+```text
+id=7 title='Oltre Trieste' price=28.25 author_id=12 in_stock=False
+9 libri sotto i 10 €; il primo: La cucina di Ferrara
+gestito: 404 not_found: Libro 9999 non trovato (request c759f5c4d347)
+nuovo prezzo: 19.9
+```
+
+Note that `Book` ignores the fields it has not declared (`isbn`, `attributes`, `reviews_count`…): your code depends only on what it uses, and the API can add fields without breaking it. If instead a declared field is missing or changes type, `model_validate`/`parse` reports it right away.
+
+## Try it now
+
+Look at `x-request-id` in the headers of every response: that is the value to put in the logs.
+
+<Prova path="/api/v1/books/7" titolo="a request with X-Request-Id" />
+
+<Prova path="/api/v1/books/9999" titolo="404: not to be retried" />
+
+## Exercise
+
+1. Add to the client a `create_order(...)` method that does **not** retry on network errors (why?) but does retry on `429`.
+2. Set `timeout=0.001` and watch what happens: which exception, how many attempts, how much total time?
+3. Add a one-line log for every request with method, path, status, milliseconds and `X-Request-Id`.
+
+<details>
+<summary>Solution</summary>
+
+1. `POST /orders` is not idempotent: if the response is lost after the order has been created, a retry creates a second one. On `429`, instead, the server guarantees it has **not** executed the request, so retrying is safe. Implementation: a `retry_network: bool` parameter in `_request`, `False` for POSTs.
+2. `httpx.ConnectTimeout` / the `TimeoutError` of `AbortSignal`, 5 attempts (1 + 4 retries) with waits of 0.5, 1, 2, 4 s: about 7.5 s plus the jitter, then the exception of the last attempt.
+3. In `_request`, before `return r`: `log.info("%s %s %s %.0fms id=%s", method, path, r.status_code, r.elapsed.total_seconds()*1000, r.headers.get("X-Request-Id"))` (in TS measure with `performance.now()`).
+</details>
+
+## Common mistakes
+
+- **`fetch` without `AbortSignal.timeout`**: it can wait forever.
+- **Retrying `4xx`s**: you waste time and requests, and with `409`/`422` nothing will change.
+- **Immediate, fixed retries** (`sleep(1)` every time): all the clients resynchronize on the peaks. Backoff + jitter.
+- **A new client for every call**: no keep-alive, and the operating system's connection limits run out.
+- **Not saving `X-Request-Id`** in the errors: when you need it, it is gone.
+
+## Summary
+
+Timeouts everywhere, retries only on transient errors with backoff and `Retry-After`, responses validated by a model, `X-Request-Id` in the logs, and automatic retries only on idempotent requests. You now have a production-grade client. In the next chapter you use it for the final project: syncing the catalog into a local database and handling an order from start to finish.

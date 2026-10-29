@@ -1,0 +1,181 @@
+---
+title: "8. Authentication"
+description: "API keys, Bearer tokens, OAuth2 in brief; the Authorization header and its errors; where to keep secrets in curl, Python and TypeScript."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../../components/Prova.astro';
+import Curl from '../../../../components/Curl.astro';
+
+## Goals
+
+- Tell apart the three schemes you will meet in almost every API: **API key**, **Bearer token**, **OAuth2**.
+- Use the `Authorization` header correctly and recognize the 401s that come from a wrong header.
+- Keep secrets **out of the code**: environment variables and `.env` files.
+- Know what NOT to do (tokens in URLs, in logs, in repositories).
+
+## Theory
+
+### Authentication ≠ authorization
+
+- **Authentication**: *who you are*. It fails with **401**.
+- **Authorization**: *what you may do*. It fails with **403**.
+
+On our server the sandbox token is the authentication (it identifies your copy of the database); the `403 sql_not_allowed` of `POST /sql` (chapter 12) is a denied authorization: you are recognized, but that operation is not allowed to anyone.
+
+### Three schemes
+
+| Scheme | How it is sent | Who uses it | Notes |
+|---|---|---|---|
+| **API key** | a proprietary header (`X-API-Key: …`) or, worse, the query string (`?api_key=…`) | simple services, weather data, maps | a fixed string, often tied to the account; rotating it = changing it everywhere |
+| **Bearer token** | `Authorization: Bearer <token>` ([RFC 6750](https://www.rfc-editor.org/rfc/rfc6750)) | almost every modern API | "bearer" = whoever *carries* it is authorized. It often expires. It can be opaque (like our `sb_…`) or a **JWT** (three base64 parts separated by dots, holding who you are and until when it is valid) |
+| **OAuth2** | you obtain a Bearer token through a *flow* (redirect to the provider, consent, exchange of a code) | "Sign in with Google", Slack/GitHub/Microsoft APIs on behalf of a user | complex to set up, but in the end you always send `Authorization: Bearer` |
+| HTTP Basic | `Authorization: Basic base64(user:password)` (curl's `-u`) | old APIs, internal services | only over HTTPS: base64 encoding is not encryption |
+
+The course sandbox uses **Bearer** (and alternatively accepts `X-Sandbox-Token`, in API-key style, to show you both forms).
+
+### The `Authorization` header
+
+Format: `Authorization: <scheme> <credentials>`. The scheme is a word (`Bearer`, `Basic`), then **one space**, then the value. Classic mistakes: wrong scheme (`Token abc`), missing scheme (`Authorization: sb_…`), expired token, a token copied with an extra space or newline.
+
+### Where to keep secrets
+
+A token in the source code ends up in git, in backups, in screenshots. The rule:
+
+1. The secret lives in an **environment variable** (`export TOKEN=…`) or in a **`.env`** file listed in `.gitignore`.
+2. The code **reads** it (`os.environ`, `process.env`) and that is all.
+3. The repository gets a `.env.example` with the variable **names** and fake values.
+4. Never in the URL (it ends up in server logs and in browser history), never in `print`/`console.log`.
+
+## curl, explained
+
+### With and without a token
+
+<Curl cmd={`curl -sS -w ' → %{http_code}\\n' https://corso-api-json.giuseppebosi.com/api/v1/sandbox/me
+curl -sS -w ' → %{http_code}\\n' -H "Authorization: Bearer $TOKEN" https://corso-api-json.giuseppebosi.com/api/v1/sandbox/me
+curl -sS -w ' → %{http_code}\\n' -H "X-Sandbox-Token: $TOKEN" https://corso-api-json.giuseppebosi.com/api/v1/sandbox/me`} spiega={[
+  ['/sandbox/me', '"who am I?": the endpoint for checking a token. Many APIs have one (<code>/me</code>, <code>/user</code>, <code>/whoami</code>)'],
+  ['(no header)', '→ 401 <code>unauthorized</code>'],
+  ['-H "Authorization: Bearer $TOKEN"', 'Bearer scheme: the standard'],
+  ['-H "X-Sandbox-Token: $TOKEN"', 'API-key style: a proprietary header, same effect on this server'],
+]} />
+
+```
+{"error":{"code":"unauthorized","message":"Nessun token: aggiungi Authorization: Bearer <token>"}} → 401
+{"authenticated":true,"token_prefix":"sb_7cyEm…","expires_at":"2026-09-19T02:03:39Z"} → 200
+{"authenticated":true,"token_prefix":"sb_7cyEm…","expires_at":"2026-09-19T02:03:39Z"} → 200
+```
+
+Note that the response shows only a **prefix** of the token: a well-built API never sends you the whole secret back.
+
+### 401s "caused by the header"
+
+<Curl cmd={`curl -sS -H "Authorization: Token $TOKEN" https://corso-api-json.giuseppebosi.com/api/v1/sandbox/me; echo
+curl -sS -H "Authorization: Bearer sb_finto" https://corso-api-json.giuseppebosi.com/api/v1/sandbox/me; echo
+curl -sS -H 'Authorization: Bearer $TOKEN' https://corso-api-json.giuseppebosi.com/api/v1/sandbox/me; echo`} spiega={[
+  ['"Authorization: Token …"', 'wrong scheme → <code>bad_authorization</code>: the server tells you the expected format'],
+  ['"Bearer sb_finto"', 'right scheme, nonexistent (or expired) token → <code>invalid_token</code>'],
+  ["'Authorization: Bearer $TOKEN'", '<strong>single</strong> quotes: the shell does not expand <code>$TOKEN</code> and sends the six characters <code>$TOKEN</code> literally → <code>invalid_token</code>. The most common mistake of all'],
+  ['; echo', 'adds a newline between one output and the next (JSON responses do not end with a newline)'],
+]} />
+
+```
+{"error":{"code":"bad_authorization","message":"Usa l'intestazione: Authorization: Bearer <token>"}}
+{"error":{"code":"invalid_token","message":"Token sandbox sconosciuto o scaduto: creane uno con POST /api/v1/sandbox"}}
+{"error":{"code":"invalid_token","message":"Token sandbox sconosciuto o scaduto: creane uno con POST /api/v1/sandbox"}}
+```
+
+### The token in a `.env` file
+
+```bash
+# .env  (aggiungilo a .gitignore!)
+CORSO_TOKEN=sb_7cyEmMkco216unjxIBct6XTQ
+```
+
+<Curl cmd={`set -a; . ./.env; set +a
+curl -sS -H "Authorization: Bearer $CORSO_TOKEN" https://corso-api-json.giuseppebosi.com/api/v1/sandbox/me`} spiega={[
+  ['set -a', 'from now on every variable assigned is exported (visible to child processes, such as curl)'],
+  ['. ./.env', 'runs the file in the current shell (<code>.</code> = <code>source</code>): the <code>NAME=value</code> lines become variables'],
+  ['set +a', 'turns auto-export off'],
+  ['$CORSO_TOKEN', 'now available, without the token appearing in the command or in the history'],
+]} />
+
+## Python and TypeScript
+
+Reading the token from an environment variable (falling back to a `.env` file), setting it **once** on the client, and a clear message if it is missing.
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# CORSO_TOKEN=sb_… python3 auth.py      (oppure: pip install python-dotenv e usa load_dotenv())
+import os, sys
+import httpx
+
+token = os.environ.get("CORSO_TOKEN")
+if not token:
+    sys.exit("Imposta CORSO_TOKEN (ottienilo con: curl -sS -X POST …/api/v1/sandbox)")
+
+client = httpx.Client(
+    base_url="https://corso-api-json.giuseppebosi.com/api/v1",
+    headers={"Authorization": f"Bearer {token}"},      # su ogni richiesta del client
+)
+r = client.get("/sandbox/me")
+if r.status_code == 401:
+    sys.exit(f"token rifiutato: {r.json()['error']['code']}")
+print("autenticato fino a", r.json()["expires_at"])
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// CORSO_TOKEN=sb_… node --experimental-strip-types auth.ts   (Node 20+: anche  node --env-file=.env auth.ts)
+const token = process.env.CORSO_TOKEN;
+if (!token) { console.error("Imposta CORSO_TOKEN (ottienilo con: curl -sS -X POST …/api/v1/sandbox)"); process.exit(1); }
+
+const base = "https://corso-api-json.giuseppebosi.com/api/v1";
+const headers = { Authorization: `Bearer ${token}` };            // riusato su ogni fetch
+
+const r = await fetch(base + "/sandbox/me", { headers });
+if (r.status === 401) { console.error("token rifiutato:", (await r.json()).error.code); process.exit(1); }
+console.log("autenticato fino a", (await r.json()).expires_at);
+```
+
+`node --env-file=.env script.ts` loads the `.env` file without any library (Node ≥ 20.6).
+</TabItem>
+</Tabs>
+
+<Aside type="caution" title="Expired tokens">
+A long-running client must expect the token to expire: on `401 expired_token`/`invalid_token`, get a new one (here: `POST /sandbox`; in OAuth2: the *refresh token*) and repeat the request **once**. Not in a loop.
+</Aside>
+
+## Try it now
+
+<Prova path="/api/v1/sandbox/me" titolo="without a token: 401" />
+
+<Prova path="/api/v1/sandbox/me" sandbox titolo="with your sandbox token: 200" />
+
+<Prova path="/api/v1/sandbox/me" headers={{"Authorization": "Token abc"}} titolo="wrong scheme: bad_authorization" />
+
+## Exercise
+
+1. What is the practical difference between a 401 and a 403 for your code? What makes sense to retry?
+2. Write the `auth.py`/`auth.ts` script so that, if `CORSO_TOKEN` is missing **or** is rejected, it creates a new sandbox, prints the token **only once** (so you can copy it into `.env`) and carries on.
+3. Why is `?token=sb_…` in the query string a bad idea even though this server accepts it?
+
+<details>
+<summary>Solution</summary>
+
+1. 401 → a credentials problem: renew/get the token and retry once. 403 → the operation is forbidden: retrying is useless; change the request or ask for permissions.
+2. On `401` call `POST /sandbox`, update the client's header with the new token and repeat the `GET /sandbox/me`. Print the token with a notice ("copy it into .env"), not on every run.
+3. The URL ends up in the logs of the server and of the proxy, in the browser history, and in the `Referer` header if the page loads external resources. Headers do not. The server accepts it only for convenience in the course widgets.
+</details>
+
+## Common mistakes
+
+- **`'Bearer $TOKEN'` in single quotes** in curl (said before, and you will see people do it for years).
+- **`Authorization: sb_…`** without the `Bearer` scheme.
+- **A token in the repository**: add `.env` to `.gitignore` *before* the first commit; a committed secret must be rotated, deleting it from history is not enough.
+- **Logging the request headers** for debugging: mask `Authorization`.
+- **Mistaking a 401 for "I do not have permission"**: it means "I do not know who you are".
+
+## Summary
+
+`Authorization: Bearer <token>` (or an API-key header), 401 = who are you?, 403 = you may not. Secrets live in environment variables and `.env`, not in the code. Next chapter: searching by text, and why `LIKE` is not enough.

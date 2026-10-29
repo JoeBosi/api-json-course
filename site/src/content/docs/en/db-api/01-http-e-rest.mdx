@@ -1,0 +1,228 @@
+---
+title: "1. HTTP and REST"
+description: "Client and server, the anatomy of a URL, methods, headers, status codes and REST resources, reading a real request line by line with curl -v."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../../components/Prova.astro';
+import Curl from '../../../../components/Curl.astro';
+
+## Goals
+
+- Understand what happens when a program "calls an API": who talks to whom, and in what order.
+- Take a URL apart (scheme, host, path, query string) and know why spaces become `%20`.
+- Know the five HTTP methods you will always use and what it means for an operation to be *idempotent*.
+- Read an HTTP response: status line, headers, JSON body.
+- Recognize the **REST** style: resources (`/books`, `/books/1`, `/authors/1/books`) and how they combine with methods.
+
+## Theory
+
+### Client and server
+
+An HTTP API is a conversation with fixed turns: the **client** (your script, the browser, curl) sends a **request**; the **server** answers with a **response**; done. No memory between one request and the next, except what the client carries along itself (a token, for example). This simplicity is why HTTP works across different languages, operating systems and continents.
+
+A request is text, organized like this:
+
+```
+METODO /percorso?query HTTP/1.1      ← riga di richiesta
+Host: server.esempio                 ← header (uno per riga)
+Accept: application/json
+                                     ← riga vuota
+{"eventuale": "corpo"}               ← corpo (opzionale: GET non ce l'ha)
+```
+
+And the response:
+
+```
+HTTP/1.1 200 OK                      ← riga di stato: versione, codice, frase
+content-type: application/json       ← header
+content-length: 37
+
+{"status":"ok"}                      ← corpo
+```
+
+### Anatomy of a URL
+
+```
+https://corso-api-json.giuseppebosi.com/api/v1/books?category=gialli&sort=-price
+└─┬─┘   └────────────┬────────────────┘└─────┬─────┘└────────────┬───────────────┘
+schema              host                 percorso            query string
+```
+
+| Part | What it is |
+|---|---|
+| **scheme** | `https` = HTTP encrypted with TLS. Always use `https` when available. |
+| **host** | the server name (DNS translates it into an IP address). It can have a port: `127.0.0.1:8795`. |
+| **path** | *which* resource you want: `/api/v1/books`. APIs use it as a hierarchy: `/authors/1/books` = "the books of author 1". |
+| **query string** | after `?`: `key=value` pairs separated by `&`. Used for filtering, sorting, pagination. |
+
+Only certain characters are allowed in a URL: the others must be **encoded** (*percent-encoding*). A space becomes `%20` (or `+` in the query string), `è` becomes `%C3%A8`, `&` inside a value becomes `%26`. Libraries do it for you (`params=` in httpx, `URLSearchParams` in JavaScript, `--data-urlencode` in curl); doing it by hand is the number one source of bugs.
+
+### The methods
+
+| Method | Meaning | Has a body? | Idempotent? |
+|---|---|---|---|
+| `GET` | read | no | yes |
+| `POST` | create (or "do something") | yes | **no** |
+| `PUT` | replace entirely | yes | yes |
+| `PATCH` | change only some fields | yes | usually |
+| `DELETE` | delete | usually not | yes |
+
+**Idempotent** means: repeating the same request twice leaves the server in the same state as doing it once. `DELETE /books/81` twice → the book stays deleted (the second time you get 404, but the state is the same). `POST /orders` twice → **two orders**. That is why a client that retries automatically must be careful with `POST`s (chapter 16).
+
+### Headers
+
+Metadata about the request or the response, in the form `Name: value`, case-insensitive. The ones you will meet all the time:
+
+- `Content-Type: application/json` — "the body I am sending you is JSON" (required when you send a body).
+- `Accept: application/json` — "I want JSON in the response".
+- `Authorization: Bearer <token>` — who you are (chapter 8).
+- In responses: `content-length`, `etag`, `cache-control`, `location`, `retry-after`.
+
+### Status codes
+
+The three-digit number in the status line. It is enough to remember the first digit:
+
+| Family | Meaning | Examples you will see in the course |
+|---|---|---|
+| **2xx** | ok | `200 OK`, `201 Created` (after a POST), `204 No Content` (after a DELETE); `304 Not Modified` is a 3xx but means "use the copy you have" |
+| **3xx** | go elsewhere | `307` redirect (e.g. from `/pagina` to `/pagina/`) |
+| **4xx** | **you got it wrong** (client) | `400` malformed request, `401` authentication missing, `404` does not exist, `409` conflict, `422` invalid data, `429` too many requests |
+| **5xx** | **the server got it wrong** | `500`, `502`, `503` |
+
+A `4xx` is not "a program crash": it is the server telling you what to fix. Chapter 7 is about reading them.
+
+### REST: resources
+
+**REST** is a style, not a standard: "RESTful" APIs expose **resources** (plural nouns) identified by URLs, and use HTTP methods as verbs.
+
+| URL | What it represents |
+|---|---|
+| `/api/v1/books` | the **collection** of books |
+| `/api/v1/books/1` | **one** book (id 1) |
+| `/api/v1/authors/1/books` | the books **of** author 1 (a nested resource: it follows a foreign key) |
+| `/api/v1/books?category=gialli` | the collection, **filtered** |
+
+Combining them: `GET /books` (list), `POST /books` (create), `GET /books/1` (read), `PATCH /books/1` (update), `DELETE /books/1` (delete). The `/v1` is **versioning**: when the API changes in an incompatible way, `/v2` will be born and `/v1` will keep working.
+
+In modern APIs the body of requests and responses is **JSON** (Section 1). This server's list responses have a fixed *envelope*: `items` (the list), `meta` (total, page), `links` (next page). You will see it in chapter 3.
+
+## curl, explained: a request and a response line by line
+
+`-v` (*verbose*) makes curl show everything it sends (`>`) and receives (`<`). It is the best way to **see** HTTP.
+
+<Curl cmd={`curl -sv https://corso-api-json.giuseppebosi.com/api/v1/health`} spiega={[
+  ['curl', 'the command-line HTTP client'],
+  ['-s', '<em>silent</em>: no progress bar'],
+  ['-v', '<em>verbose</em>: shows the request sent (lines starting with <code>&gt;</code>) and the headers received (lines starting with <code>&lt;</code>). <code>-sv</code> is the compact form of <code>-s -v</code>'],
+  ['https://…/api/v1/health', 'the URL. No method declared, no body: curl does a <code>GET</code>'],
+]} />
+
+Output (TLS negotiation lines omitted):
+
+```
+> GET /api/v1/health HTTP/1.1
+> Host: corso-api-json.giuseppebosi.com
+> User-Agent: curl/8.5.0
+> Accept: */*
+>
+< HTTP/1.1 200 OK
+< content-type: application/json
+< content-length: 37
+< x-request-id: c7b58388d726
+< cache-control: no-store
+<
+{"status":"ok","public_dataset":true}
+```
+
+Reading it:
+
+1. `> GET /api/v1/health HTTP/1.1` — the request line: method, path, protocol version. Note that the host is **not** in the path: it goes in the `Host` header.
+2. `> User-Agent`, `> Accept: */*` — curl introduces itself and says it accepts any content type. A lone `>` is the empty line that closes the headers: there is no body.
+3. `< HTTP/1.1 200 OK` — the status line: all good.
+4. `< content-type: application/json` — the body is JSON; `content-length: 37` — it is 37 bytes long.
+5. `< x-request-id` — an identifier the server assigns to every request: useful to ask "what happened to request X?". `cache-control: no-store` — do not keep this response.
+6. The line `{"status":"ok","public_dataset":true}` is the **body**: the only thing curl prints without `-v`.
+
+<Prova path="/api/v1/health" titolo="the simplest request in the course" />
+
+Now the API index, which lists the available resources (a style called *HATEOAS*: the response contains the links to carry on):
+
+<Curl cmd={`curl -s https://corso-api-json.giuseppebosi.com/api/v1/ | python3 -m json.tool`} spiega={[
+  ['/api/v1/', 'the root of version 1 of the API'],
+  ['|', 'the shell <em>pipe</em>: the output of curl becomes the input of the next command'],
+  ['python3 -m json.tool', 'reformats the JSON with indentation (alternatively <code>jq .</code>, if installed)'],
+]} />
+
+```json
+{
+    "name": "Corso JSON & API — server di prova",
+    "version": "1",
+    "docs": "https://corso-api-json.giuseppebosi.com/api/docs",
+    "links": {
+        "health": "https://corso-api-json.giuseppebosi.com/api/v1/health",
+        "schema": "https://corso-api-json.giuseppebosi.com/api/v1/schema",
+        "books": "https://corso-api-json.giuseppebosi.com/api/v1/books",
+        "authors": "https://corso-api-json.giuseppebosi.com/api/v1/authors",
+        …
+    },
+    "sandbox": "POST /api/v1/sandbox → token; poi Authorization: Bearer <token>"
+}
+```
+
+<Prova path="/api/v1/" titolo="the API index" />
+
+## Python and TypeScript
+
+The same `GET /health`, reading status, headers and body. Chapter 3 goes deeper into the two libraries.
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx  →  python3 health.py
+import httpx
+
+r = httpx.get("https://corso-api-json.giuseppebosi.com/api/v1/health")
+print(r.status_code)                    # 200
+print(r.headers["content-type"])        # application/json
+print(r.headers.get("x-request-id"))    # es. c7b58388d726
+print(r.json())                         # {'status': 'ok', 'public_dataset': True}
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types health.ts
+const r = await fetch("https://corso-api-json.giuseppebosi.com/api/v1/health");
+console.log(r.status);                          // 200
+console.log(r.headers.get("content-type"));     // application/json
+console.log(r.headers.get("x-request-id"));     // es. c7b58388d726
+console.log(await r.json());                    // { status: 'ok', public_dataset: true }
+```
+</TabItem>
+</Tabs>
+
+## Exercise
+
+With `curl -sv`, call `https://corso-api-json.giuseppebosi.com/api/v1/books/1` and answer:
+
+1. What is the value of `content-length`? Is it the number of bytes of the body or of the text with line breaks?
+2. Is there an `etag` header? What could it be for? (You will find out in chapter 14.)
+3. Try calling `/api/v1/books/1` with `-X DELETE`. What status do you get, and why is it "your fault"?
+
+<details>
+<summary>Solution</summary>
+
+1. The body travels on **one line**, with no indentation: `content-length` counts exactly those bytes (for book 1 it is a few hundred).
+2. Yes: `etag: "…"` is a fingerprint of the content. Sending it back with `If-None-Match`, the server answers `304 Not Modified` if the book has not changed, saving the body.
+3. `401 Unauthorized` with `{"error":{"code":"sandbox_required",…}}`: deleting requires a sandbox token (chapter 6). It is a 4xx: the request was well formed but not authorized.
+</details>
+
+## Common mistakes
+
+- **Putting the port or the host in the path** (`GET https://host/api` in the request line): the path starts from `/`; the host goes in the `Host` header. Libraries do it for you.
+- **Forgetting `Content-Type: application/json`** when you send a body: many servers respond 415 or 422.
+- **Treating 4xx as crashes**: they are responses, with a JSON body that explains. Read it.
+- **Retrying a `POST`** without thinking: it is not idempotent.
+
+## Summary
+
+HTTP is text: request line, headers, body; status line, headers, body. REST maps resources onto URLs and operations onto methods. `curl -v` shows you everything. Next chapter: curl from A to Z, option by option.

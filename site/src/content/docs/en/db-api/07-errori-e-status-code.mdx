@@ -1,0 +1,223 @@
+---
+title: "7. Errors and status codes"
+description: "The single error format, the codes you will meet (400, 401, 404, 409, 422, 429) with real examples, and correct handling in Python and TypeScript."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../../components/Prova.astro';
+import Curl from '../../../../components/Curl.astro';
+
+## Goals
+
+- Read an API error: status, `code`, `message`, `details`.
+- Know what each 4xx code means and **what to fix**.
+- Tell an "HTTP error" (there is a response) from a "network error" (there is none), and handle them differently.
+- Write a calling function that turns errors into readable exceptions.
+
+## Theory
+
+### A single format
+
+Every error from this server — of any kind — has the same shape:
+
+```json
+{
+  "error": {
+    "code": "not_found",                 ← identificativo stabile, pensato per il codice (if code == …)
+    "message": "Libro 9999 non trovato", ← testo per gli umani, può cambiare
+    "details": …                         ← opzionale: lista di problemi (422) o oggetto con info (400)
+  }
+}
+```
+
+Not all APIs are this tidy (some answer `{"detail": "..."}`, others `{"message": …}`, others HTML!). When you use a new one, the first thing to do is to cause an error and look at its shape.
+
+### The codes, one by one
+
+| Status | Typical `code` here | What it means | What you do |
+|---|---|---|---|
+| **400** Bad Request | `bad_sort`, `bad_expand`, `bad_query`, `unknown_field` | the request is formally fine but a parameter makes no sense | read `details.allowed` and fix it |
+| **401** Unauthorized | `sandbox_required`, `unauthorized`, `invalid_token`, `expired_token`, `bad_authorization` | authentication is missing or wrong (the name is misleading: it means "not authenticated") | get/renew the token, check the header |
+| **403** Forbidden | `sql_not_allowed` | you are authenticated but you **may not** do this | do not insist: it is a rule |
+| **404** Not Found | `not_found` | the resource (or the endpoint) does not exist | check the id and the path |
+| **405** Method Not Allowed | — | the endpoint exists but not with that method. This server, because of how it routes `/api/*`, answers 404 for methods the router does not know (e.g. `DELETE /health`), but 405 for `HEAD` (e.g. `HEAD /books/1`); others answer 405 with an `Allow` header | use the right method |
+| **408** Request Timeout | `sql_timeout` | the server stopped waiting (here: a query over 2 s) | simplify |
+| **409** Conflict | `duplicate_isbn`, `duplicate_email`, `book_in_orders`, `invalid_transition`, `out_of_stock` | the request contradicts the **current state** of the data | change the data or the order of operations |
+| **413** Payload Too Large | — | body too large (here Caddy limits it to 1 MB) | reduce it |
+| **415** Unsupported Media Type | — | `Content-Type` not handled. This server tries to read the body as JSON anyway and, if it cannot, answers 422 | send `application/json` |
+| **422** Unprocessable Entity | `validation_error`, `unknown_author`, `unknown_category`, `unknown_book`, `empty_patch` | syntax ok, **content** not valid: missing field, wrong type, value out of range, nonexistent FK | read `details[]`: each entry has `loc` (where) and `msg` (why) |
+| **429** Too Many Requests | `rate_limited` | too many requests from your IP (30/min on the public server) | wait `Retry-After` seconds, slow down |
+| **5xx** | — | the server got it wrong | retry later; if it persists, it is not your fault |
+
+<Aside type="tip" title="4xx vs 5xx in code">
+A 4xx is **deterministic**: repeating the same request gives the same error, so retrying is pointless (except for 429 and 408). A 5xx or a network error can be transient: a retry after a wait makes sense. Chapter 16.
+</Aside>
+
+## curl, explained
+
+Let's cause the errors one at a time. `-i` to see the status, `-w` to print it compactly.
+
+<Curl cmd={`curl -sS -w '\\n→ %{http_code}\\n' https://corso-api-json.giuseppebosi.com/api/v1/books/9999
+curl -sS -w '\\n→ %{http_code}\\n' https://corso-api-json.giuseppebosi.com/api/v1/libri
+curl -sS -w '\\n→ %{http_code}\\n' 'https://corso-api-json.giuseppebosi.com/api/v1/books/1?expand=boh'`} spiega={[
+  ["-w '\\n→ %{http_code}\\n'", 'after the body, a newline, then an arrow and the status: so each command shows body and code together'],
+  ['/books/9999', 'nonexistent id → 404 on the resource'],
+  ['/libri', 'nonexistent endpoint → 404 on the path, with a message pointing to the index'],
+  ['?expand=boh', 'a nonsensical parameter → 400 with the list of allowed values'],
+]} />
+
+```
+{"error":{"code":"not_found","message":"Libro 9999 non trovato"}}
+→ 404
+{"error":{"code":"not_found","message":"Nessun endpoint /api/v1/libri. Elenco: /api/v1/ e /api/docs"}}
+→ 404
+{"error":{"code":"bad_expand","message":"expand non valido: boh","details":{"allowed":["author","category","reviews","stats","tags"]}}}
+→ 400
+```
+
+A `422` with several problems at once, and one with a nonexistent foreign key:
+
+<Curl cmd={`curl -sS -X POST https://corso-api-json.giuseppebosi.com/api/v1/books \\
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \\
+  -d '{"title": "", "author_id": "tre", "price": -1}' | jq '.error.details[] | "\\(.loc | join(".")): \\(.msg)"'
+curl -sS -X POST https://corso-api-json.giuseppebosi.com/api/v1/books \\
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \\
+  -d '{"title": "x", "author_id": 999, "category_id": 1, "price": 1}'`} spiega={[
+  ['"title": ""', 'empty string: violates <code>min_length=1</code>'],
+  ['"author_id": "tre"', 'wrong type: an integer was expected'],
+  ['(category_id missing)', 'a required field is absent'],
+  ['"price": -1', 'out of range'],
+  ['| jq …', 'for each entry of <code>details</code> prints <code>position: reason</code>; <code>loc</code> is an array such as <code>["body","title"]</code>'],
+  ['"author_id": 999', 'formally valid, but the author does not exist: the server checks it before writing'],
+]} />
+
+```
+"body.title: String should have at least 1 character"
+"body.author_id: Input should be a valid integer, unable to parse string as an integer"
+"body.category_id: Field required"
+"body.price: Input should be greater than or equal to 0"
+{"error":{"code":"unknown_author","message":"author_id 999 non esiste (chiave esterna)"}}
+```
+
+The 422 lists **all** the problems at once: fix them all before retrying. And malformed JSON?
+
+<Curl cmd={`curl -sS -X POST https://corso-api-json.giuseppebosi.com/api/v1/books \\
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \\
+  -d '{"title": "x",}'`} spiega={[
+  ['{"title": "x",}', 'a trailing comma: it is not JSON. The server cannot even read it'],
+]} />
+
+```json
+{"error":{"code":"validation_error","message":"Richiesta non valida: controlla i campi in details","details":[{"loc":["body",14],"msg":"JSON decode error","type":"json_invalid"}]}}
+```
+
+`loc: ["body", 14]` = character 14 of the body: the point where the parser gets stuck, that is the closing brace right after the extra comma.
+
+You already saw 401 and 409 in chapter 6; you will only see 429 if you overdo it: it answers `Retry-After: 10` and `{"error":{"code":"rate_limited",…}}`. No need to trigger it on purpose.
+
+## Python and TypeScript
+
+A function `prendi(url)` that: returns the data if all goes well; on an HTTP error prints status, `code`, `message` and the details; on a network error says so without confusing it with an API error.
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# python3 errori.py
+import httpx
+
+def prendi(url):
+    try:
+        r = httpx.get(url, timeout=10)
+        r.raise_for_status()          # solleva HTTPStatusError se lo status è 4xx o 5xx
+        return r.json()
+    except httpx.HTTPStatusError as e:
+        errore = e.response.json()["error"]      # il formato è sempre {"error": {...}}
+        print(f"{e.response.status_code} {errore['code']}: {errore['message']}")
+        if isinstance(errore.get("details"), list):
+            for d in errore["details"]:
+                print("   -", ".".join(map(str, d["loc"])), "→", d["msg"])
+    except httpx.RequestError as e:               # rete, DNS, timeout: nessuna risposta HTTP
+        print("errore di rete:", e)
+
+prendi("https://corso-api-json.giuseppebosi.com/api/v1/books/9999")
+prendi("https://corso-api-json.giuseppebosi.com/api/v1/books?sort=boh")
+prendi("https://corso-api-json.giuseppebosi.com/api/v1/books?limit=500")
+prendi("http://localhost:1/api")                  # nessun server in ascolto
+```
+
+`httpx.HTTPStatusError` has `.response` (with status and body); `httpx.RequestError` is the base of `ConnectError`, `ReadTimeout`, etc. (`requests` has `requests.HTTPError` and `requests.RequestException`, same idea).
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types errori.ts
+async function prendi(url: string) {
+  let r: Response;
+  try { r = await fetch(url); }
+  catch (e) { console.log("errore di rete:", (e as Error).message); return; }   // nessuna risposta HTTP
+  if (!r.ok) {                                   // fetch NON lancia per 4xx/5xx: va controllato a mano
+    const { error } = await r.json();
+    console.log(`${r.status} ${error.code}: ${error.message}`);
+    if (Array.isArray(error.details)) for (const d of error.details) console.log("   -", d.loc.join("."), "→", d.msg);
+    return;
+  }
+  return r.json();
+}
+await prendi("https://corso-api-json.giuseppebosi.com/api/v1/books/9999");
+await prendi("https://corso-api-json.giuseppebosi.com/api/v1/books?sort=boh");
+await prendi("https://corso-api-json.giuseppebosi.com/api/v1/books?limit=500");
+await prendi("http://localhost:1/api");           // nessun server in ascolto
+```
+
+`fetch` throws (`TypeError: fetch failed`) **only** for network problems; a 500 is a "successful" response from its point of view. For a timeout: `fetch(url, { signal: AbortSignal.timeout(10_000) })`.
+</TabItem>
+</Tabs>
+
+Output (identical):
+
+```
+404 not_found: Libro 9999 non trovato
+400 bad_sort: sort non valido: boh
+422 validation_error: Richiesta non valida: controlla i campi in details
+   - query.limit → Input should be less than or equal to 100
+errore di rete: … Connection refused / fetch failed
+```
+
+In chapter 16 this function becomes a real error class (`ApiError` with `status`, `code`, `details`) and a client with retries.
+
+## Try it now
+
+<Prova path="/api/v1/books/9999" titolo="404 on a resource" />
+
+<Prova path="/api/v1/books?sort=boh" titolo="400 with details.allowed" />
+
+<Prova method="POST" path="/api/v1/books" sandbox body={{"title": "", "author_id": "tre", "price": -1}} titolo="422 with four problems (needs the sandbox)" />
+
+<Prova method="POST" path="/api/v1/orders" sandbox body={{"customer_id": 1, "items": [{"book_id": 1, "quantity": 1}], "shipping_address": {"street": "x", "city": "y", "zip": "1"}}} titolo="422 on a nested field: look at loc" />
+
+## Exercise
+
+For each situation, write the status and the `code` you expect, then check:
+
+1. `PATCH /api/v1/books/1` with body `{}` (sandbox).
+2. `PATCH /api/v1/orders/1` with `{"status": "pending"}` (order 1 is `delivered`).
+3. `GET /api/v1/sandbox/me` with the header `Authorization: Token abc`.
+4. `POST /api/v1/orders` with a `book_id` that does not exist.
+
+<details>
+<summary>Solution</summary>
+
+1. `422 empty_patch` — no field to change.
+2. `409 invalid_transition` — from `delivered` you cannot go anywhere; `details.allowed` is `[]`.
+3. `401 bad_authorization` — the scheme must be `Bearer`.
+4. `422 unknown_book` — a nonexistent foreign key, checked before writing.
+</details>
+
+## Common mistakes
+
+- **Reading only `message`** and doing `if "non trovato" in message`: texts change, `code`s do not.
+- **Catching everything with `except Exception`** and printing "error": you lose status and details, and cannot tell a 404 from an unplugged cable.
+- **Retrying a 4xx**: it will give the same result. Retry only 429 (after `Retry-After`), 408, 5xx and network errors.
+- **Ignoring the 422's `details`**: it holds the answer to "what do I need to fix".
+
+## Summary
+
+Status for the family, `code` to decide, `message` to read, `details` to fix. In Python `raise_for_status()` + two `except`s; in TypeScript a `try` around `fetch` and `if (!r.ok)`. Next chapter: where that `Bearer` comes from, and how secrets are kept.

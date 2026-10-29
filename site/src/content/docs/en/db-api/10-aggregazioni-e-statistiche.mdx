@@ -1,0 +1,179 @@
+---
+title: "10. Aggregations and statistics"
+description: "Counts, sums, averages and groupings exposed by an API: /stats and /stats/sales, with GROUP BY, HAVING and a text chart in Python and TypeScript."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../../components/Prova.astro';
+import Curl from '../../../../components/Curl.astro';
+
+## Goals
+
+- Understand what an API does when it returns "statistics": `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` computed by the database.
+- Read an aggregated response and know which tables and JOINs it comes from.
+- Use `GET /stats` and `GET /stats/sales?group_by=…&from=…&to=…` with curl, Python and TypeScript.
+- Draw a text chart from the aggregated numbers.
+
+## Theory
+
+So far you have asked for **rows**: a book, a list of orders. Aggregations ask instead for **summary numbers** over many rows: how many books per category, revenue per month, an author's average rating. In SQL you get them with **aggregate functions** and `GROUP BY`:
+
+| Function | What it computes | Example in the dataset |
+|---|---|---|
+| `COUNT(*)` | number of rows in the group | books per category |
+| `COUNT(DISTINCT x)` | distinct values | distinct orders containing a book |
+| `SUM(x)` | sum | revenue (`quantity * unit_price`) |
+| `AVG(x)` | average | average price |
+| `MIN(x)` / `MAX(x)` | extremes | cheapest / most expensive book |
+
+`GROUP BY column` splits the rows into groups (one per value of the column) and every function works **inside** the group. `HAVING` filters the groups *after* aggregation (while `WHERE` filters the rows *before*).
+
+A "well-made" API does not make you download 300 rows of `order_items` to add them up on the client: it exposes an endpoint that does the calculation in the database and returns only the result. It is faster and, above all, the result is **consistent** (a single source of truth).
+
+<Aside type="note" title="Which tables do the numbers come from?">
+`/stats/sales` joins **four** tables: `orders` (date and status) → `order_items` (quantity and price) → `books` (category, author) → `categories`/`authors`/`customers` depending on `group_by`. You will see the exact query in chapter 12 when you write it yourself with `/sql`.
+</Aside>
+
+## curl, explained option by option
+
+The overall picture of the catalog:
+
+<Curl cmd={`curl -s https://corso-api-json.giuseppebosi.com/api/v1/stats | python3 -m json.tool`} spiega={[
+  ['curl -s', 'a silent GET request (no progress bar)'],
+  ['/api/v1/stats', "an aggregation endpoint: no parameters, it returns a fixed summary"],
+  ['|', "the shell <em>pipe</em>: the output of curl becomes the input of the next command"],
+  ['python3 -m json.tool', 'reads JSON from standard input and prints it indented (handy for reading long responses)'],
+]} />
+
+Response (shortened):
+
+```json
+{
+  "totals": { "books": 80, "authors": 20, "customers": 40, "orders": 120, "reviews": 243 },
+  "prices": { "min": 7.13, "avg": 19.9, "max": 34.49 },
+  "books_by_category": [
+    { "slug": "saggistica", "name": "Saggistica", "books": 14, "avg_price": 17.04 },
+    { "slug": "ragazzi", "name": "Ragazzi", "books": 12, "avg_price": 16.72 },
+    { "slug": "cucina", "name": "Cucina", "books": 9, "avg_price": 18.39 },
+    …
+  ],
+  "top_authors": [
+    { "id": 18, "name": "Matteo Rinaldi", "books": 8, "avg_rating": 4.22 },
+    { "id": 1, "name": "Elena Marchetti", "books": 6, "avg_rating": 3.12 },
+    …
+  ],
+  "orders_by_status": [
+    { "status": "cancelled", "orders": 18, "revenue": 1304.45 },
+    { "status": "delivered", "orders": 48, "revenue": 3820.12 },
+    …
+  ]
+}
+```
+
+Read it with the functions in mind: `totals` are five `COUNT(*)`s; `prices` is `MIN/AVG/MAX(price)` over `books`; `books_by_category` is a `GROUP BY categories.id` with `COUNT(b.id)` and `AVG(b.price)`; `orders_by_status` a `GROUP BY status` with `COUNT` and `SUM(total)`.
+
+Now sales **per month**, limited to a period:
+
+<Curl cmd={`curl -s 'https://corso-api-json.giuseppebosi.com/api/v1/stats/sales?group_by=month&from=2025-01-01&to=2025-04-01'`} spiega={[
+  ["'…'", "single quotes around the URL: in many shells <code>&amp;</code> means \"run in the background\"; inside quotes it is a normal character"],
+  ['?group_by=month', 'the query string starts with <code>?</code>; <code>group_by</code> picks the <code>GROUP BY</code> column: <code>month</code>, <code>category</code>, <code>author</code> or <code>city</code>'],
+  ['&from=2025-01-01', '<code>&amp;</code> separates the parameters; <code>from</code> is the start date (included), ISO 8601 format'],
+  ['&to=2025-04-01', "end date (excluded): January, February and March"],
+]} />
+
+```json
+{
+  "group_by": "month",
+  "items": [
+    { "month": "2025-01", "orders": 5, "books_sold": 14, "revenue": 367.53 },
+    { "month": "2025-02", "orders": 4, "books_sold": 12, "revenue": 221.34 },
+    { "month": "2025-03", "orders": 6, "books_sold": 25, "revenue": 487.03 }
+  ]
+}
+```
+
+Three aggregated columns per group: `orders` is `COUNT(DISTINCT o.id)` (an order with 3 lines counts once), `books_sold` is `SUM(oi.quantity)`, `revenue` is `SUM(oi.quantity * oi.unit_price)`. `cancelled` orders are excluded by a `WHERE` before grouping.
+
+## Python and TypeScript
+
+Sales per city, turned into a text bar chart. The heavy lifting (sums and groupings) is done by the server; the client only sorts and draws.
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx   →   python3 vendite.py
+import httpx
+
+BASE = "https://corso-api-json.giuseppebosi.com/api/v1"
+r = httpx.get(f"{BASE}/stats/sales", params={"group_by": "city"}, timeout=10)
+r.raise_for_status()                       # solleva un'eccezione se lo status non è 2xx
+righe = r.json()["items"]
+massimo = max(x["revenue"] for x in righe)
+for x in sorted(righe, key=lambda x: -x["revenue"]):
+    barra = "█" * round(30 * x["revenue"] / massimo)
+    print(f"{x['city']:<8} {barra:<30} {x['revenue']:>8.2f} € ({x['orders']} ordini)")
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types vendite.ts
+const BASE = "https://corso-api-json.giuseppebosi.com/api/v1";
+type Riga = { city: string; orders: number; books_sold: number; revenue: number };
+
+const r = await fetch(`${BASE}/stats/sales?group_by=city`);
+if (!r.ok) throw new Error(`HTTP ${r.status}`);
+const { items } = (await r.json()) as { items: Riga[] };
+const massimo = Math.max(...items.map((x) => x.revenue));
+for (const x of [...items].sort((a, b) => b.revenue - a.revenue)) {
+  const barra = "█".repeat(Math.round((30 * x.revenue) / massimo));
+  console.log(`${x.city.padEnd(8)} ${barra.padEnd(30)} ${x.revenue.toFixed(2).padStart(8)} € (${x.orders} ordini)`);
+}
+```
+</TabItem>
+</Tabs>
+
+Output (identical in both languages):
+
+```text
+Torino   ██████████████████████████████  1715.02 € (20 ordini)
+Padova   ████████████████████████████    1609.57 € (20 ordini)
+Firenze  █████████████████████████       1423.28 € (16 ordini)
+Napoli   ███████████████████             1059.56 € (12 ordini)
+Verona   █████████████                    749.61 € (9 ordini)
+Genova   ████████████                     658.60 € (10 ordini)
+Bari     ███████████                      614.68 € (8 ordini)
+Bologna  █████████                        496.76 € (6 ordini)
+Roma     ██                                93.14 € (1 ordini)
+```
+
+## Try it now
+
+<Prova path="/api/v1/stats" titolo="catalog summary" />
+
+<Prova path="/api/v1/stats/sales?group_by=category" titolo="sales per category" />
+
+<Prova path="/api/v1/stats/sales?group_by=author&from=2025-06-01" titolo="sales per author since June 2025" />
+
+## Exercise
+
+1. Which category has the highest **revenue**? Is it the same one with the most **books sold**? (use `group_by=category`).
+2. Write a script that calls `/stats/sales?group_by=month` and prints the best and the worst month.
+3. Why does `orders` in `/stats/sales` use `COUNT(DISTINCT o.id)` and not `COUNT(*)`?
+
+<details>
+<summary>Solution</summary>
+
+1. With `group_by=category`: **saggistica** (non-fiction) has the highest revenue (€1,489.55) **and is also first for copies sold** (82), followed by narrativa (fiction: €1,460.82 and 64 copies). Here the two rankings coincide, but it is not a given: further down, cucina (cooking) sells 39 copies with lower revenue (€742.25) than fantascienza (sci-fi), which sells 28 (€834.10). It depends on the average price.
+2. Once you have `items`, `max(items, key=lambda x: x["revenue"])` and `min(...)` in Python; in TS sort with `sort` and take the first and the last.
+3. Because the query joins `orders` with `order_items`: an order with three lines appears three times in the JOIN. `COUNT(*)` would count the rows, `COUNT(DISTINCT o.id)` the orders.
+</details>
+
+## Common mistakes
+
+- **Aggregating on the client** by downloading every row: slow, and with pagination you risk adding up only the first page.
+- **Confusing `WHERE` and `HAVING`**: `from`/`to` filter the *rows* (WHERE), "only categories with more than 5 books" filters the *groups* (HAVING).
+- **Forgetting the statuses**: revenue that includes cancelled orders is wrong. Always ask the API (or the documentation) what it excludes.
+- **Averages of averages**: the average of the per-category average prices is not the average price of the catalog.
+
+## Summary
+
+Aggregations are numbers computed by the database over groups of rows; the API exposes them as dedicated endpoints (`/stats`, `/stats/sales`) with parameters to choose the grouping and the period. In the next chapter you switch sides: you will build the query yourself, in JSON, with `POST /query`.

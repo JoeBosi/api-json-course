@@ -45,7 +45,7 @@ Non tutte le API sono così ordinate (alcune rispondono `{"detail": "..."}`, alt
 | **413** Payload Too Large | — | corpo troppo grande (qui Caddy limita a 1 MB) | riduci |
 | **415** Unsupported Media Type | — | `Content-Type` non gestito. Questo server prova comunque a leggere il corpo come JSON e, se non ci riesce, risponde 422 | manda `application/json` |
 | **422** Unprocessable Entity | `validation_error`, `unknown_author`, `unknown_category`, `unknown_book`, `empty_patch` | sintassi ok, **contenuto** non valido: campo mancante, tipo sbagliato, valore fuori intervallo, FK inesistente | leggi `details[]`: ogni voce ha `loc` (dove) e `msg` (perché) |
-| **429** Too Many Requests | `rate_limited` | troppe richieste dal tuo IP (120/min) | aspetta `Retry-After` secondi, rallenta |
+| **429** Too Many Requests | `rate_limited` | troppe richieste dal tuo IP (30/min sul server pubblico) | aspetta `Retry-After` secondi, rallenta |
 | **5xx** | — | ha sbagliato il server | riprova più tardi; se persiste, non è colpa tua |
 
 <Aside type="tip" title="4xx vs 5xx nel codice">

@@ -1,0 +1,281 @@
+---
+title: "15. Security"
+description: "SQL injection and why /query and /sql are safe, input validation, CORS explained with curl, secrets and tokens, HTTPS, rate limiting and the security headers added by the reverse proxy."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../../components/Prova.astro';
+import Curl from '../../../../components/Curl.astro';
+
+## Goals
+
+- Understand **SQL injection** and the three defenses the server uses: `?` parameters, an allow-list, an authorizer.
+- Read a validation `422` and know why every field is checked before touching the database.
+- Understand **CORS**: what it is, why it exists, how to see it with curl, why the test server opens it.
+- Treat tokens as secrets: where to keep them, where never to put them.
+- Know what the reverse proxy adds (HTTPS, security headers) and what the rate limit protects.
+
+## Theory
+
+### SQL injection
+
+The oldest attack, and still one of the most frequent: a value supplied by the user ends up **inside the text** of the query. If the server built `"SELECT * FROM books WHERE title = '" + titolo + "'"` and you sent `x' OR 1=1 --`, the query would become `… WHERE title = 'x' OR 1=1 --'`: every row. With `'; DROP TABLE books; --`, worse.
+
+The defenses, all present in the test server:
+
+1. **Parameters** (`?` + a `params` list): the value travels separately from the SQL text and the engine never interprets it as code. You saw it in `meta.sql` in chapter 11: `WHERE price < ?` with `params: [12]`.
+2. An **allow-list** for what *cannot* be a parameter — table and column names: `/query` only accepts `books, authors, customers, orders, reviews` and, for each one, a closed list of fields. `?sort=price` on `/books` goes through the same list.
+3. An **authorizer** + a read-only connection for `/sql`: even if a `DELETE` arrived, SQLite rejects it before running it (chapter 12).
+
+### Input validation
+
+Every body goes through a **model** (Pydantic, on the server side) that declares types, limits and shape: `price >= 0`, `rating` between 1 and 5, a five-digit `zip`, non-empty `items`, at most 20 lines. A value outside the rules produces a `422` with the list of problems, **before** the database is involved. The database still has its own constraints (chapter 13): two layers are better than one.
+
+### CORS
+
+A browser running JavaScript on `https://yoursite.com` cannot, by default, read the response of a request to `https://corso-api-json.giuseppebosi.com`: this is the **same-origin policy**, which prevents one site from reading another's data using the user's credentials (cookies). **CORS** (Cross-Origin Resource Sharing) is the mechanism by which a server tells the browser "this other site may read me": it answers with an `Access-Control-Allow-Origin` header. For "non-simple" requests (methods other than GET/POST, custom headers such as `Authorization`) the browser first sends an `OPTIONS` **preflight** request and goes ahead only if the server approves it.
+
+Important: CORS **applies only to browsers**. curl, Python and Node do not enforce it. It is not a protection for the server: it is a protection for the browser's user.
+
+The test server answers `Access-Control-Allow-Origin: *` because it is public, uses no cookies and wants the "Try it" widgets and your experiments from any page to work.
+
+### Secrets
+
+The sandbox token is a secret (a small one, but a secret): whoever has it can write to your copy. Rules that apply to any API key:
+
+- never in the source code or in a repository: environment variables or a `.env` file ignored by git;
+- never in the URL (`?token=…` ends up in proxy logs and in the history): in the `Authorization` header;
+- never inside the JavaScript of a public site: anyone can read it. If needed, a backend acts as an intermediary.
+
+### HTTPS, security headers, rate limiting
+
+HTTPS encrypts everything (URL, headers, token, body) and guarantees that you are talking to the real server. It is terminated by **Caddy**, the reverse proxy in front of the test server, which also adds headers such as `Strict-Transport-Security` (always use HTTPS), `X-Content-Type-Options: nosniff` (do not guess types), `X-Frame-Options: DENY` (no iframes). The rate limit (chapter 14) closes the circle: it limits the damage from automated abuse or brute-force attempts.
+
+## curl, explained option by option
+
+### An injection that does not work
+
+<Curl cmd={`curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/query -H 'Content-Type: application/json' \\
+  -d '{"from": "books", "select": ["id", "title"], "where": {"field": "title", "op": "eq", "value": "x'"'"' OR 1=1 --"}}'`} spiega={[
+  ["\"value\": \"x' OR 1=1 --\"", 'the classic payload: closes the string, adds an always-true condition, comments out the rest'],
+  ["'\"'\"'", "the trick to put a single quote inside a shell single-quoted string: close ('), open double (\"), write the quote ('), close double (\"), reopen (')"],
+]} />
+
+```json
+{"items":[],"meta":{"sql":"SELECT id, title FROM books WHERE title = ? LIMIT 20 OFFSET 0","params":["x' OR 1=1 --"],"count":0}}
+```
+
+Zero results: the server looked for a book whose title is *literally* `x' OR 1=1 --`. The payload stayed a value.
+
+And if the injection targets the field **name**, where parameters cannot help?
+
+```bash
+curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/query -H 'Content-Type: application/json' \
+  -d '{"from": "books", "where": {"field": "title = 1 OR 1", "op": "eq", "value": 1}}'
+```
+
+```json
+{"error":{"code":"unknown_field","message":"Campo 'title = 1 OR 1' non ammesso per books","details":{"allowed":["id","title",…]}}}
+```
+
+The name is not in the list: `400`. And on `/sql`, even a `SELECT` that tries to read SQLite's internal catalog is stopped by the authorizer: `SELECT * FROM sqlite_master` → `access to sqlite_master.type is prohibited`.
+
+### Validation: a body full of errors
+
+<Curl cmd={`curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/books \\
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \\
+  -d '{"title": "", "author_id": "uno", "category_id": 1, "price": -3}' | python3 -m json.tool`} />
+
+```json
+{
+  "error": {
+    "code": "validation_error",
+    "message": "Richiesta non valida: controlla i campi in details",
+    "details": [
+      { "loc": ["body", "title"], "msg": "String should have at least 1 character", "type": "string_too_short" },
+      { "loc": ["body", "author_id"], "msg": "Input should be a valid integer, unable to parse string as an integer", "type": "int_parsing" },
+      { "loc": ["body", "price"], "msg": "Input should be greater than or equal to 0", "type": "greater_than_equal" }
+    ]
+  }
+}
+```
+
+Three problems, reported **all together** with the path (`loc`) of each: the client can highlight the right fields. No query was run.
+
+### CORS seen from curl
+
+<Curl cmd={`curl -s -i https://corso-api-json.giuseppebosi.com/api/v1/health -H 'Origin: https://esempio.com' | grep -i '^access-control\\|^HTTP'`} spiega={[
+  ["-H 'Origin: https://esempio.com'", "the header the browser adds automatically to say which site the request comes from. With curl we simulate it by hand"],
+  ["| grep -i '^access-control\\|^HTTP'", 'shows only the status line and the CORS headers (<code>-i</code> ignores case; <code>\\|</code> is OR in grep)'],
+]} />
+
+```http
+HTTP/1.1 200 OK
+access-control-allow-origin: *
+access-control-expose-headers: ETag, Location, Retry-After, X-Request-Id, X-RateLimit-Limit, X-RateLimit-Remaining
+```
+
+`allow-origin: *` = any site can read. `expose-headers` lists the headers the browser's JavaScript can *see* (by default it sees very few): without it, the "Try it" widget could not show you `ETag` or `Location`.
+
+The **preflight** the browser sends before a `POST` with `Authorization`:
+
+<Curl cmd={`curl -s -i -X OPTIONS https://corso-api-json.giuseppebosi.com/api/v1/books \\
+  -H 'Origin: https://esempio.com' \\
+  -H 'Access-Control-Request-Method: POST' \\
+  -H 'Access-Control-Request-Headers: authorization,content-type' | grep -i '^access-control\\|^HTTP'`} spiega={[
+  ['-X OPTIONS', 'the preflight method: "may I make this request?"'],
+  ['Access-Control-Request-Method', 'the method the browser would like to use afterwards'],
+  ['Access-Control-Request-Headers', 'the non-standard headers it would like to send'],
+]} />
+
+```http
+HTTP/1.1 200 OK
+access-control-allow-origin: *
+access-control-allow-methods: DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT
+access-control-max-age: 600
+access-control-allow-headers: authorization,content-type
+```
+
+Approved, and the browser may remember the answer for 600 seconds. If an API answers the preflight without `allow-headers: authorization`, your `fetch` from the browser fails with a CORS error even though everything works with curl: now you know where to look.
+
+### The token in the header, not in the URL
+
+```bash
+# male: il token finisce nei log e nella cronologia
+curl -s 'https://corso-api-json.giuseppebosi.com/api/v1/sandbox/me?token=sb_…'
+# bene
+curl -s https://corso-api-json.giuseppebosi.com/api/v1/sandbox/me -H "Authorization: Bearer $TOKEN"
+```
+
+(The test server also accepts `?token=` for teaching convenience: do not do it with real APIs.) And a malformed header is rejected with a clear message: `-H 'Authorization: Basic abc'` → `401 bad_authorization`, `Usa l'intestazione: Authorization: Bearer TOKEN` (use the header: Authorization: Bearer TOKEN).
+
+### The reverse proxy's security headers
+
+```bash
+curl -s -I https://corso-api-json.giuseppebosi.com/ | grep -iE 'strict-transport|x-content-type|x-frame|referrer'
+```
+
+You will see `strict-transport-security`, `x-content-type-options: nosniff`, `x-frame-options: DENY`, `referrer-policy`: Caddy adds them to **every** response, site and API. Locally (`uvicorn` alone) they are not there.
+
+## Python and TypeScript
+
+A client that keeps the secret out of the code, never puts it in the URL and shows the user the validation errors field by field:
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# CORSO_TOKEN=sb_… python3 sicuro.py      (il token arriva dall'ambiente, non dal codice)
+import os
+import sys
+
+import httpx
+
+BASE = "https://corso-api-json.giuseppebosi.com/api/v1"
+token = os.environ.get("CORSO_TOKEN")
+if not token:
+    sys.exit("imposta CORSO_TOKEN (POST /sandbox per ottenerlo)")
+
+client = httpx.Client(base_url=BASE, headers={"Authorization": f"Bearer {token}"}, timeout=10)
+
+
+def crea_libro(dati: dict) -> dict | None:
+    r = client.post("/books", json=dati)         # json= → Content-Type e serializzazione corretti
+    if r.status_code == 422:
+        for problema in r.json()["error"]["details"]:
+            campo = ".".join(str(p) for p in problema["loc"][1:])   # salta "body"
+            print(f"  campo {campo}: {problema['msg']}")
+        return None
+    r.raise_for_status()
+    return r.json()
+
+
+print("tentativo con dati sbagliati:")
+crea_libro({"title": "", "author_id": "uno", "category_id": 1, "price": -3})
+print("tentativo corretto:")
+libro = crea_libro({"title": "Manuale di difesa", "author_id": 1, "category_id": 9, "price": 24.9})
+print(" ", libro["id"], libro["title"])
+
+# un valore ostile resta un valore
+r = client.post("/query", json={"from": "books", "where": {"field": "title", "op": "like", "value": "%' OR 1=1 --"}})
+print("iniezione:", r.json()["meta"]["count"], "risultati")
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// CORSO_TOKEN=sb_… node --experimental-strip-types sicuro.ts   (il token arriva dall'ambiente)
+const BASE = "https://corso-api-json.giuseppebosi.com/api/v1";
+const token = process.env.CORSO_TOKEN;
+if (!token) { console.error("imposta CORSO_TOKEN (POST /sandbox per ottenerlo)"); process.exit(1); }
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+type Problema = { loc: (string | number)[]; msg: string; type: string };
+
+async function creaLibro(dati: object) {
+  const r = await fetch(`${BASE}/books`, { method: "POST", headers, body: JSON.stringify(dati) });
+  if (r.status === 422) {
+    const { error } = await r.json();
+    for (const p of error.details as Problema[]) console.log(`  campo ${p.loc.slice(1).join(".")}: ${p.msg}`);
+    return null;
+  }
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+console.log("tentativo con dati sbagliati:");
+await creaLibro({ title: "", author_id: "uno", category_id: 1, price: -3 });
+console.log("tentativo corretto:");
+const libro = await creaLibro({ title: "Manuale di difesa", author_id: 1, category_id: 9, price: 24.9 });
+console.log(" ", libro.id, libro.title);
+
+// un valore ostile resta un valore
+const r = await fetch(`${BASE}/query`, { method: "POST", headers, body: JSON.stringify({
+  from: "books", where: { field: "title", op: "like", value: "%' OR 1=1 --" } }) });
+console.log("iniezione:", (await r.json()).meta.count, "risultati");
+```
+</TabItem>
+</Tabs>
+
+```text
+tentativo con dati sbagliati:
+  campo title: String should have at least 1 character
+  campo author_id: Input should be a valid integer, unable to parse string as an integer
+  campo price: Input should be greater than or equal to 0
+tentativo corretto:
+  81 Manuale di difesa
+iniezione: 0 risultati
+```
+
+## Try it now
+
+<Prova method="POST" path="/api/v1/query" titolo="injection in the value: harmless" body={{ from: "books", select: ["id", "title"], where: { field: "title", op: "eq", value: "x' OR 1=1 --" } }} />
+
+<Prova method="POST" path="/api/v1/query" titolo="injection in the field name: rejected" body={{ from: "books", where: { field: "title = 1 OR 1", op: "eq", value: 1 } }} />
+
+<Prova method="POST" path="/api/v1/sql" titolo="reading the internal catalog: forbidden" body={{ sql: "SELECT name, sql FROM sqlite_master" }} />
+
+<Prova method="POST" path="/api/v1/books" sandbox titolo="validation: three errors together" body={{ title: "", author_id: "uno", category_id: 1, price: -3 }} />
+
+## Exercise
+
+1. With `/sql`, try `SELECT * FROM books WHERE title = 'x' OR 1=1` — does it work? Why is *this* not an injection?
+2. Create a customer with an invalid email (`"mario"`) and one with a one-letter `name`: read the two `422`s.
+3. Your site at `https://blog.esempio.it` calls a vendor's API and the browser says "blocked by CORS policy", but curl works. Who has to change something, and what?
+
+<details>
+<summary>Solution</summary>
+
+1. It works and returns up to 200 books: **you** are the author of the query, and `/sql` is read-only by design. An injection is when a user's *value* becomes *code* without you wanting it.
+2. `value is not a valid email address` for the email; `String should have at least 2 characters` for the name.
+3. The **vendor's server** must answer with an `Access-Control-Allow-Origin` that includes your origin (and approve the preflight if you use `Authorization`). You cannot "turn off" CORS from the client; at most you can go through a backend of your own.
+</details>
+
+## Common mistakes
+
+- **Building SQL or filters by concatenating strings** because "the values come from me anyway". They come from you today.
+- **Validating only in the frontend**: anyone can call the API without the frontend.
+- **Believing CORS protects the server**: it protects the browser's user; the server protects itself with authentication and rate limiting.
+- **Tokens in URLs, logs, repositories**. If it happens: revoke it (for the sandbox, `DELETE /sandbox`) and generate a new one.
+- **Plain HTTP** "just to try": the token travels in clear text. The test server does not even answer on HTTP.
+
+## Summary
+
+Parameters, allow-lists and an authorizer against injections; layered validation; CORS as a browser rule, not a server one; tokens in headers and out of the code; HTTPS and security headers from the reverse proxy; rate limiting against abuse. In the next chapter you put it all into a **robust client**: timeouts, retries, types and logs.

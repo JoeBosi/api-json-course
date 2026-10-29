@@ -1,0 +1,252 @@
+---
+title: "14. Performance, caching, rate limits"
+description: "ETag and 304 Not Modified, Cache-Control, gzip/zstd compression, keep-alive and connection reuse, rate limiting with 429 and Retry-After: how an API stays fast and how the client respects it."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../../components/Prova.astro';
+import Curl from '../../../../components/Curl.astro';
+
+## Goals
+
+- Use `ETag` and `If-None-Match` so you do not download again what has not changed (`304`).
+- Read `Cache-Control` and understand what can be cached, and by whom.
+- See compression at work and know who applies it.
+- Reuse the TCP/TLS connection (keep-alive) instead of opening one per request.
+- Recognize `429 Too Many Requests` + `Retry-After` and behave well.
+
+## Theory
+
+A fast API is made of three things: **not doing** useless work (caching), **transferring fewer bytes** (compression), **not paying again** for fixed costs (connections). And a fourth: **protecting itself** from those who abuse it (rate limiting), because one client's slowness becomes everybody's slowness.
+
+### ETags and conditional requests
+
+An **ETag** (*entity tag*) is a fingerprint of the response, for example the hash of the JSON. The server sends it in the `ETag` header; on the next request the client sends it back in `If-None-Match`. If the resource is identical, the server answers **`304 Not Modified` with no body**: a few bytes instead of the whole document. The client uses the copy it had.
+
+### Cache-Control
+
+It says **who** may keep the response and **for how long**:
+
+| Value | Meaning |
+|---|---|
+| `public, max-age=60` | anyone (browser, proxy, CDN) may keep it for 60 seconds |
+| `private, max-age=…` | only the user's browser, not shared proxies |
+| `no-cache` | can be kept, but must be revalidated (with the ETag) before reuse |
+| `no-store` | never keep it (personal data, responses with a token) |
+
+On the test server only `GET /books/{id}` without a token answers `public, max-age=60`; everything else (lists, statistics, and any request carrying the token) is `no-store`: your sandbox is yours.
+
+### Compression
+
+With `Accept-Encoding: gzip, zstd` the client declares what it can decompress; the server (or the reverse proxy in front of it) compresses and answers `Content-Encoding: gzip`. JSON compresses very well (often 5-10 times). Here compression is done by **the API itself** (FastAPI's `GZipMiddleware`), so you also see it locally with `uvicorn` alone: `/books?limit=100` goes from about 29,500 to 4,100 bytes. In production **Caddy** sits in front and can replace it with `zstd`.
+
+### Keep-alive
+
+Opening an HTTPS connection costs: TCP + TLS handshake, tens of milliseconds and a few round trips. HTTP/1.1 keeps the connection open (**keep-alive**) and reuses it for the next requests; HTTP/2 multiplexes them. But the client must **reuse the same object** (`httpx.Client`, a `fetch` with a shared agent): "throwaway" calls open a connection every time.
+
+### Rate limit
+
+The server counts the requests per IP address within a time window; above the threshold it answers `429 Too Many Requests` with `Retry-After: <seconds>`. A polite client **waits** that long and retries; a rude one insists and stays blocked longer. The public test server's limit is 30 requests per minute per IP (120 locally).
+
+<Aside type="note" title="Rate limiting is a feature">
+It is not hostility: it is what lets a small server serve many readers. A client that handles 429s with backoff is a quality client (chapter 16).
+</Aside>
+
+## curl, explained option by option
+
+### ETag and 304
+
+<Curl cmd={`curl -s -D - -o /dev/null https://corso-api-json.giuseppebosi.com/api/v1/books/7`} spiega={[
+  ['-D -', '<em>dump-header</em>: writes the response headers to a file; <code>-</code> = to standard output'],
+  ['-o /dev/null', 'throws the body away: we only want to see the headers'],
+]} />
+
+```http
+HTTP/1.1 200 OK
+content-type: application/json
+etag: "02956e4cbf57f15a"
+cache-control: public, max-age=60
+x-request-id: 1728fff735c5
+```
+
+Now the same request, declaring "I already have the version with this ETag":
+
+<Curl cmd={`curl -s -D - -o /dev/null https://corso-api-json.giuseppebosi.com/api/v1/books/7 \\
+  -H 'If-None-Match: "02956e4cbf57f15a"'`} spiega={[
+  ["-H 'If-None-Match: \"…\"'", "the ETag must be sent back <strong>with its quotes</strong>: they are part of the value. That is why the header is in single quotes"],
+]} />
+
+```http
+HTTP/1.1 304 Not Modified
+etag: "02956e4cbf57f15a"
+```
+
+No body: your copy is still good. If the book changes in the meantime (in the sandbox: a `PATCH`), the ETag changes and you get `200` with the JSON again.
+
+With the token the same request answers `cache-control: no-store`: try it with `curl -s -D - -o /dev/null … -H "Authorization: Bearer $TOKEN" | grep -i cache`.
+
+### Compression
+
+<Curl cmd={`curl -s -o /dev/null -w 'senza: %{size_download} byte\\n' https://corso-api-json.giuseppebosi.com/api/v1/books?limit=100
+curl -s -o /dev/null -w 'gzip:  %{size_download} byte  (%{http_version}, encoding: %header{content-encoding})\\n' \\
+  --compressed https://corso-api-json.giuseppebosi.com/api/v1/books?limit=100`} spiega={[
+  ['-w \'… %{size_download} …\'', 'write-out variables: <code>size_download</code> = bytes received, <code>http_version</code> = negotiated HTTP version, <code>%header{name}</code> = value of a response header'],
+  ['--compressed', 'adds <code>Accept-Encoding</code> with every algorithm curl supports <strong>and decompresses</strong> the response automatically. Equivalent to <code>-H \'Accept-Encoding: gzip\'</code> plus decompression'],
+]} />
+
+The second line shows `encoding: gzip` (or `zstd` on the public server, where Caddy answers) and a `size_download` several times smaller: compression is there locally too, because the API does it.
+
+### Rate limit: triggering a 429 with judgment
+
+There is no need to hammer the server to see it. A loop of just over 30 requests is enough, once:
+
+<Curl cmd={`for i in $(seq 1 40); do
+  curl -s -o /dev/null -w '%{http_code}\\n' https://corso-api-json.giuseppebosi.com/api/v1/health
+done | sort | uniq -c`} spiega={[
+  ['$(seq 1 40)', 'generates the numbers from 1 to 40: the loop runs 40 times'],
+  ["-w '%{http_code}\\n'", 'prints only the status code of each request'],
+  ['| sort | uniq -c', 'sorts the statuses and counts how many times each one appears'],
+]} />
+
+```text
+     30 200
+     10 429
+```
+
+Let's look at a full `429` response (from a local instance of the server configured with a `5/minute` limit, so as not to disturb the public one):
+
+```http
+HTTP/1.1 429 Too Many Requests
+content-type: application/json
+retry-after: 10
+
+{"error":{"code":"rate_limited","message":"Troppe richieste: limite 5 per 1 minute. Riprova tra poco."}}
+```
+
+`Retry-After: 10` is the instruction for the client: wait 10 seconds. The body has the usual `error` format. After the loop, **wait a minute** before carrying on with the exercises.
+
+## Python and TypeScript
+
+A client that reuses the connection, keeps ETags per URL and respects `Retry-After`:
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx   →   python3 cache.py
+import time
+
+import httpx
+
+BASE = "https://corso-api-json.giuseppebosi.com/api/v1"
+cache: dict[str, tuple[str, dict]] = {}          # url -> (etag, json)
+
+# un solo Client = una sola connessione riusata (keep-alive) e header comuni
+client = httpx.Client(base_url=BASE, timeout=10, headers={"Accept-Encoding": "gzip, zstd"})
+
+
+def get(path: str) -> dict:
+    headers = {}
+    if path in cache:
+        headers["If-None-Match"] = cache[path][0]      # "ho già questa versione"
+    while True:
+        r = client.get(path, headers=headers)
+        if r.status_code == 429:
+            attesa = int(r.headers.get("Retry-After", "5"))
+            print(f"429: aspetto {attesa}s")
+            time.sleep(attesa)
+            continue
+        break
+    if r.status_code == 304:
+        print(f"{path}: 304, uso la cache")
+        return cache[path][1]
+    r.raise_for_status()
+    if etag := r.headers.get("ETag"):
+        cache[path] = (etag, r.json())
+    print(f"{path}: {r.status_code}, {len(r.content)} byte, encoding={r.headers.get('Content-Encoding', '-')}, "
+          f"cache-control={r.headers.get('Cache-Control')}")
+    return r.json()
+
+
+t0 = time.perf_counter()
+libro = get("/books/7")
+libro = get("/books/7")                     # seconda volta: 304
+print(libro["title"], f"({(time.perf_counter() - t0) * 1000:.0f} ms per due richieste sulla stessa connessione)")
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types cache.ts
+const BASE = "https://corso-api-json.giuseppebosi.com/api/v1";
+const cache = new Map<string, { etag: string; body: unknown }>();   // url -> versione conosciuta
+const dormi = (s: number) => new Promise((r) => setTimeout(r, s * 1000));
+
+// fetch di Node riusa le connessioni (keep-alive) per la stessa origine: nessun setup extra
+async function get(path: string): Promise<any> {
+  const headers: Record<string, string> = { "Accept-Encoding": "gzip, zstd" };
+  const noto = cache.get(path);
+  if (noto) headers["If-None-Match"] = noto.etag;            // "ho già questa versione"
+  for (;;) {
+    const r = await fetch(BASE + path, { headers });
+    if (r.status === 429) {
+      const attesa = Number(r.headers.get("Retry-After") ?? 5);
+      console.log(`429: aspetto ${attesa}s`);
+      await dormi(attesa);
+      continue;
+    }
+    if (r.status === 304) { console.log(`${path}: 304, uso la cache`); return noto!.body; }
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const body = await r.json();
+    const etag = r.headers.get("ETag");
+    if (etag) cache.set(path, { etag, body });
+    console.log(`${path}: ${r.status}, encoding=${r.headers.get("content-encoding") ?? "-"}, cache-control=${r.headers.get("cache-control")}`);
+    return body;
+  }
+}
+
+const t0 = performance.now();
+let libro = await get("/books/7");
+libro = await get("/books/7");                                // seconda volta: 304
+console.log(libro.title, `(${(performance.now() - t0).toFixed(0)} ms per due richieste)`);
+```
+</TabItem>
+</Tabs>
+
+Expected output (in production):
+
+```text
+/books/7: 200, 375 byte, encoding=zstd, cache-control=public, max-age=60
+/books/7: 304, uso la cache
+Oltre Trieste (… ms per due richieste sulla stessa connessione)
+```
+
+## Try it now
+
+Run it twice in a row and look at `etag` and `cache-control` in the response headers (the browser handles `If-None-Match` by itself: the second time it is served from its cache).
+
+<Prova path="/api/v1/books/7" titolo="detail with ETag and Cache-Control" />
+
+<Prova path="/api/v1/books?limit=100" titolo="100 books: look at the bytes and the time" />
+
+## Exercise
+
+1. Download `/books/7` with its ETag, then (with the sandbox) change the price of book 7 and download it again **with the token**: what status do you get, and why is the ETag different?
+2. Measure ten requests in a `for` loop with `-w '%{time_total}\n'` (each curl opens a new connection) and compare them with the Python/TS script that reuses one. How much does the handshake cost?
+3. What happens if you ignore `Retry-After` and keep calling during a 429? Answer by reasoning, without trying it on the public server.
+
+<details>
+<summary>Solution</summary>
+
+1. `200` with a new `etag`: the fingerprint is computed on the response JSON, and the price has changed. Also, with the token `cache-control` becomes `no-store`.
+2. Typically 40-120 ms per request with a new connection (TCP + TLS) against 5-20 ms for the following ones on the same connection: the fixed cost dominates on fast APIs.
+3. The requests keep receiving 429 and keep counting in the window: you stay blocked longer. Some servers increase the penalty for repeat offenders.
+</details>
+
+## Common mistakes
+
+- **A "bare" `httpx.get` / `fetch` for every call in a loop**: no keep-alive, no ETag cache, no common headers.
+- **Caching `no-store` responses** (with a token): private data ending up in a shared cache.
+- **Retrying immediately on a 429** (or on a 5xx): it makes the problem worse. You need to wait, preferably longer each time.
+- **Taking compression for granted**: here the API applies it itself, but many APIs leave it to the reverse proxy, and in development, with no proxy, there is none. Check `content-encoding`.
+
+## Summary
+
+ETag/304 avoid downloading again, `Cache-Control` says who may keep what, compression cuts the bytes, keep-alive removes handshakes, and `429` + `Retry-After` regulate traffic. In the next chapter you will see the API's defenses from the other side: injections, validation, CORS and secrets.

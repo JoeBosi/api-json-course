@@ -45,7 +45,7 @@ Aprire una connessione HTTPS costa: handshake TCP + TLS, decine di millisecondi 
 
 ### Rate limit
 
-Il server conta le richieste per indirizzo IP in una finestra di tempo; oltre la soglia risponde `429 Too Many Requests` con `Retry-After: <secondi>`. Un client educato **aspetta** quel tempo e riprova; uno maleducato insiste e resta bloccato più a lungo. Il limite del server di prova è 120 richieste al minuto per IP.
+Il server conta le richieste per indirizzo IP in una finestra di tempo; oltre la soglia risponde `429 Too Many Requests` con `Retry-After: <secondi>`. Un client educato **aspetta** quel tempo e riprova; uno maleducato insiste e resta bloccato più a lungo. Il limite del server di prova pubblico è 30 richieste al minuto per IP (120 in locale).
 
 <Aside type="note" title="Il rate limit è una feature">
 Non è ostilità: è ciò che permette a un server piccolo di servire molti lettori. Un client che gestisce i 429 con backoff è un client di qualità (capitolo 16).
@@ -97,18 +97,18 @@ La seconda riga mostra `encoding: gzip` (o `zstd` sul server pubblico, dove risp
 
 ### Rate limit: provocare un 429 con giudizio
 
-Non serve martellare il server per vederlo. Un ciclo di poco più di 120 richieste basta, una sola volta:
+Non serve martellare il server per vederlo. Un ciclo di poco più di 30 richieste basta, una sola volta:
 
-<Curl cmd={`for i in $(seq 1 130); do
+<Curl cmd={`for i in $(seq 1 40); do
   curl -s -o /dev/null -w '%{http_code}\\n' https://corso-api-json.giuseppebosi.com/api/v1/health
 done | sort | uniq -c`} spiega={[
-  ['$(seq 1 130)', 'genera i numeri da 1 a 130: il ciclo gira 130 volte'],
+  ['$(seq 1 40)', 'genera i numeri da 1 a 40: il ciclo gira 40 volte'],
   ["-w '%{http_code}\\n'", 'stampa solo lo status code di ogni richiesta'],
   ['| sort | uniq -c', 'ordina gli status e conta quante volte compare ciascuno'],
 ]} />
 
 ```text
-    120 200
+     30 200
      10 429
 ```
 
@@ -244,7 +244,7 @@ Esegui due volte di seguito e guarda `etag` e `cache-control` negli header della
 - **Un `httpx.get` / `fetch` "nudo" per ogni chiamata in un ciclo**: niente keep-alive, niente cache degli ETag, niente header comuni.
 - **Mettere in cache risposte `no-store`** (con token): dati privati che finiscono in una cache condivisa.
 - **Ritentare subito su 429** (o su 5xx): peggiora il problema. Serve attesa, meglio se crescente.
-- **Aspettarsi la compressione in locale**: la applica il reverse proxy; in sviluppo non c'è.
+- **Dare per scontata la compressione**: qui la applica l'API stessa, ma molte API la delegano al reverse proxy e in sviluppo, senza proxy, non c'è. Controlla `content-encoding`.
 
 ## In sintesi
 

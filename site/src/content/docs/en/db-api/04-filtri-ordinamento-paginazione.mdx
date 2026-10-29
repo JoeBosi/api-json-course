@@ -1,0 +1,236 @@
+---
+title: "4. Filtering, sorting, pagination"
+description: "The query string for real: simple filters, filters on relations and on JSON columns, signed sort, page/limit, and a loop that follows links.next to the last page."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../../components/Prova.astro';
+import Curl from '../../../../components/Curl.astro';
+
+## Goals
+
+- Combine several filters in the query string and know which values each one accepts.
+- Sort with `sort=field` / `sort=-field`.
+- Understand **offset** pagination (`page`/`limit`) and its limits; read `meta` and `links`.
+- Write a loop that downloads **all** pages by following `links.next`, in Python and TypeScript.
+- Recognize parameter errors (400, 422) before they turn into bugs.
+
+## Theory
+
+### Filtering
+
+A collection can have thousands of elements: the client says *which ones* it wants with query parameters. On `/api/v1/books` these are available:
+
+| Parameter | What it does | Example |
+|---|---|---|
+| `q` | text contained in the title (`LIKE %q%`, case-insensitive) | `q=trieste` |
+| `author_id` | books by an author (foreign key) | `author_id=4` |
+| `category` | category **slug**, **subcategories included** | `category=narrativa` also takes gialli (crime), fantascienza (sci-fi), storici (historical) |
+| `tag` | books with that tag (N-N relation) | `tag=premio` |
+| `min_price`, `max_price` | price range (inclusive) | `min_price=10&max_price=20` |
+| `year_from`, `year_to` | publication year range | `year_from=2000` |
+| `language` | language code | `language=en` |
+| `in_stock` | `true`/`false` | `in_stock=true` |
+| `format` | value of `attributes.format`, a **JSON column** | `format=tascabile` |
+
+Filters combine with **AND**: `category=gialli&max_price=15` = crime **and** under €15. (For OR and complex conditions there is `POST /query`, chapter 11.)
+
+Values reach the server as **strings**: it is the server that converts them (`min_price=10` → number) and validates them. If you send `min_price=dieci` you get 422.
+
+### Sorting
+
+`sort=price` ascending, `sort=-price` descending: the minus sign before the name is a widespread convention (JSON:API, many REST APIs). Fields allowed here: `id`, `title`, `price`, `year`, `pages`, `created_at`, `rating`. With equal values the server sorts by `id`, so the order is **stable** from one page to the next (without this rule, an element could appear on two pages or on none).
+
+### Paginating
+
+With 80 books fine, with 80,000 no: responses are split into **pages**.
+
+- `limit` = elements per page (default 20 here, **maximum 100**).
+- `page` = which page, starting from 1.
+- The server computes `OFFSET (page-1)*limit` in the SQL query: this is **offset** pagination. Simple, but with huge offsets it becomes slow and, if someone inserts an element in the meantime, pages "slide". The alternative — **cursor** pagination (`?after=<id>`) — is touched on in chapter 14.
+
+The response tells you where you are and how to carry on:
+
+```json
+"meta":  { "page": 1, "limit": 3, "total": 4, "pages": 2 },
+"links": { "self": "…page=1…", "next": "…page=2…", "prev": null }
+```
+
+`links.next` is **null** on the last page: that is the loop's exit condition. And it already contains all the filters: the client does not have to rebuild anything.
+
+## curl, explained
+
+The most expensive crime novels, three per page:
+
+<Curl cmd={`curl -sS -G https://corso-api-json.giuseppebosi.com/api/v1/books \\
+  --data-urlencode 'category=gialli' \\
+  --data-urlencode 'sort=-price' \\
+  --data-urlencode 'limit=3' | jq '{meta, links, titoli: [.items[] | "\\(.id) \\(.title) \\(.price)"]}'`} spiega={[
+  ['-G', 'sends the <code>--data-urlencode</code> values in the query string (GET method)'],
+  ['category=gialli', 'filter on the category (slug), recursive over subcategories'],
+  ['sort=-price', 'descending price'],
+  ['limit=3', 'three per page; no <code>page</code> given = 1'],
+  ['| jq …', 'builds an object with <code>meta</code>, <code>links</code> and a list of <code>"id title price"</code> strings (in jq <code>\\(…)</code> interpolates inside strings)'],
+]} />
+
+```json
+{
+  "meta": { "page": 1, "limit": 3, "total": 4, "pages": 2 },
+  "links": {
+    "self": "https://corso-api-json.giuseppebosi.com/api/v1/books?category=gialli&sort=-price&page=1&limit=3",
+    "next": "https://corso-api-json.giuseppebosi.com/api/v1/books?category=gialli&sort=-price&page=2&limit=3",
+    "prev": null
+  },
+  "titoli": [ "48 La casa sul Porto Vecchio 21.77", "1 Il silenzio di Ustica 18.71", "67 Nebbia su Lecce 11.18" ]
+}
+```
+
+Four crime novels in all, two pages: you get the second with `--data-urlencode 'page=2'` or simply with `curl -sS "$(…links.next…)"`.
+
+A filter on a **JSON column** combined with others:
+
+<Curl cmd={`curl -sS 'https://corso-api-json.giuseppebosi.com/api/v1/books?format=tascabile&in_stock=true&min_price=10&max_price=20&limit=2' \\
+  | jq '.meta.total, (.items[] | [.id, .title, .price, .attributes.format])'`} spiega={[
+  ["'…?format=…&in_stock=…'", 'here the query string is written by hand: no value has spaces or special characters, but the URL still goes in quotes because of <code>&amp;</code>'],
+  ['format=tascabile', 'filters <code>attributes.format</code>: the server uses <code>json_extract(attributes, &#39;$.format&#39;)</code> in SQL'],
+  ['in_stock=true', 'boolean: <code>true/false</code>, <code>1/0</code> are accepted'],
+  ['| jq …', 'prints the total and, for each book, an array with four fields'],
+]} />
+
+```
+11
+[14,"Le avventure di Orvieto",10.56,"tascabile"]
+[21,"Il drago di Alba",18.98,"tascabile"]
+```
+
+And parameter errors:
+
+<Curl cmd={`curl -sS 'https://corso-api-json.giuseppebosi.com/api/v1/books?sort=boh'
+curl -sS 'https://corso-api-json.giuseppebosi.com/api/v1/books?limit=500'`} spiega={[
+  ['sort=boh', 'nonexistent sort field → <code>400 bad_sort</code>, and in <code>details.allowed</code> the list of valid ones'],
+  ['limit=500', 'over the maximum → <code>422 validation_error</code>, with <code>details[].loc</code> pointing to <code>["query","limit"]</code>'],
+]} />
+
+```json
+{"error":{"code":"bad_sort","message":"sort non valido: boh","details":{"allowed":["created_at","id","pages","price","rating","title","year"]}}}
+{"error":{"code":"validation_error","message":"Richiesta non valida: controlla i campi in details","details":[{"loc":["query","limit"],"msg":"Input should be less than or equal to 100","type":"less_than_equal"}]}}
+```
+
+## Python and TypeScript: downloading every page
+
+The pattern is always the same: start from the URL with the filters, then **follow `links.next` until it is null**. Watch one detail: the parameters go only in the **first** request, because `next` already contains them.
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# python3 tutte_le_pagine.py
+import httpx
+
+url = "https://corso-api-json.giuseppebosi.com/api/v1/books"
+params = {"category": "saggistica", "sort": "-price", "limit": 10}
+tutti = []
+with httpx.Client() as client:            # un Client riusa la connessione tra le richieste
+    while url:
+        r = client.get(url, params=params)
+        r.raise_for_status()
+        dati = r.json()
+        tutti.extend(dati["items"])
+        print(f'pagina {dati["meta"]["page"]}/{dati["meta"]["pages"]}: {len(dati["items"])} libri')
+        url, params = dati["links"]["next"], None   # next contiene già filtri e limit
+print(len(tutti), "libri in totale; il più caro:", tutti[0]["title"], tutti[0]["price"])
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types tutte_le_pagine.ts
+let url: string | null = "https://corso-api-json.giuseppebosi.com/api/v1/books?category=saggistica&sort=-price&limit=10";
+const tutti: { title: string; price: number }[] = [];
+while (url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const dati = await r.json();
+  tutti.push(...dati.items);
+  console.log(`pagina ${dati.meta.page}/${dati.meta.pages}: ${dati.items.length} libri`);
+  url = dati.links.next;                  // null sull'ultima pagina → esce dal while
+}
+console.log(tutti.length, "libri in totale; il più caro:", tutti[0].title, tutti[0].price);
+```
+</TabItem>
+</Tabs>
+
+Output (identical in both languages):
+
+```
+pagina 1/4: 10 libri
+pagina 2/4: 10 libri
+pagina 3/4: 10 libri
+pagina 4/4: 4 libri
+34 libri in totale; il più caro: Ustica e il Novecento 34.36
+```
+
+<Aside type="caution" title="Rate limit">
+A loop over every page makes many requests. The public server accepts 30 per minute per IP (120 if you run it locally): with `limit=100` you download 80 books in one call; with `limit=1` you need 80. Use the maximum `limit` when you want everything.
+</Aside>
+
+## Try it now
+
+<Prova path="/api/v1/books?category=narrativa&year_from=2015&sort=year&limit=5" titolo="fiction (and subcategories) since 2015, by year" />
+
+<Prova path="/api/v1/books?tag=premio&sort=-rating&limit=5" titolo="books tagged «premio», by average rating" />
+
+<Prova path="/api/v1/books?min_price=abc" titolo="a wrong value: look at details" />
+
+## Exercise
+
+1. How many books in **English** are in the catalog, and which is the cheapest? (A single curl command, with `jq` or `python3 -m json.tool`.)
+2. Write a function `tutti(url, params)` that returns the full list of elements of any collection, and use it to count the **orders** with `status=delivered` (endpoint `/api/v1/orders`, same `meta`/`links`).
+
+<details>
+<summary>Solution</summary>
+
+1. `curl -sS 'https://corso-api-json.giuseppebosi.com/api/v1/books?language=en&sort=price&limit=1' | jq '.meta.total, .items[0].title, .items[0].price'`
+2.
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+import httpx
+def tutti(url, params=None):
+    out = []
+    with httpx.Client() as c:
+        while url:
+            d = c.get(url, params=params).raise_for_status().json()
+            out += d["items"]
+            url, params = d["links"]["next"], None
+    return out
+consegnati = tutti("https://corso-api-json.giuseppebosi.com/api/v1/orders", {"status": "delivered", "limit": 100})
+print(len(consegnati))
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+async function tutti(url: string | null) {
+  const out: any[] = [];
+  while (url) {
+    const r = await fetch(url); if (!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json(); out.push(...d.items); url = d.links.next;
+  }
+  return out;
+}
+const consegnati = await tutti("https://corso-api-json.giuseppebosi.com/api/v1/orders?status=delivered&limit=100");
+console.log(consegnati.length);
+```
+</TabItem>
+</Tabs>
+</details>
+
+## Common mistakes
+
+- **Passing `params` again on every page** together with `links.next`: the parameters get duplicated or overwritten (`page=2` repeated). Pass the parameters only the first time.
+- **Counting `len(items)` instead of reading `meta.total`**: `items` is only the current page.
+- **Ignoring `meta.pages` and doing `for page in range(1, 1000)`**: you ask for empty pages and burn the rate limit. Use `links.next`.
+- **`sort=price desc`**: the syntax is `-price`. And the space, by the way, would need encoding.
+- **Sorting on the client** after downloading only one page: you sort 20 elements out of 80.
+
+## Summary
+
+AND filters in the query string (also on relations and JSON columns), `sort=-field`, `page`/`limit` with a maximum of 100, and `links.next` to walk through everything. In the next chapter we follow **foreign keys**: from an order to its books, to their authors, in a single request.

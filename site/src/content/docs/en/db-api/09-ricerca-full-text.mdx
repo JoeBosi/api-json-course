@@ -1,0 +1,194 @@
+---
+title: "9. Full-text search"
+description: "GET /search with SQLite FTS5: bm25 ranking, snippets, syntax (prefixes, AND/OR/NOT, phrases), compared with the LIKE filter of /books?q=."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../../components/Prova.astro';
+import Curl from '../../../../components/Curl.astro';
+
+## Goals
+
+- Understand the difference between a **substring filter** (`LIKE '%x%'`) and a **full-text search** (inverted index, ranking).
+- Use `GET /api/v1/search` with FTS5 syntax: words, `*` prefixes, `AND`/`OR`/`NOT`, `"phrases"`.
+- Read `score` and `snippet` and show them in an interface.
+- Handle the `400 bad_query` error of an invalid syntax.
+
+## Theory
+
+### LIKE vs full-text
+
+`GET /books?q=tri` (chapter 4) does `WHERE title LIKE '%tri%'` in SQL: it looks for the substring in the title. Simple, but:
+
+- it scans **all** the rows (no index: with millions of books it is slow);
+- it finds `tri` inside `Trieste`, `Sestri`, `Contro`… without telling whole words apart;
+- it does not sort by relevance;
+- it does not search the description, or several fields together, or handle "one word OR the other".
+
+A **full-text** engine builds an **inverted index**: for each word (*token*), the list of documents that contain it. SQLite offers it with the **FTS5** extension (`CREATE VIRTUAL TABLE books_fts USING fts5(title, description)`); PostgreSQL with `tsvector`; then there are dedicated engines (Elasticsearch, Meilisearch, Typesense) that add typo tolerance, synonyms, facets. The concept is the same.
+
+### What `/search` returns
+
+```json
+{ "id": 7, "title": "Oltre Trieste", "price": 28.25, "author_id": 12,
+  "score": -3.1252954456330926,
+  "snippet": "Oltre <b>Trieste</b>. Un libro di fantascienza ambientato tra Otranto e Brisighella." }
+```
+
+- **`score`**: relevance according to **BM25**, the standard search-engine formula (term frequency in the document, rarity of the term in the index, document length). In SQLite **lower = more relevant** (it is already negative); results arrive sorted.
+- **`snippet`**: an excerpt of the description with the matched term highlighted between `<b>…</b>` (the server uses FTS5's `snippet()` function). Meant to be shown as HTML, sanitizing it if the content were not trusted.
+
+### FTS5 query syntax
+
+| You write | It finds |
+|---|---|
+| `trieste` | documents with the word *trieste* (whole word, case ignored) |
+| `tri*` | words that **start** with *tri* (prefix) |
+| `trieste estati` | both (implicit AND) |
+| `trieste AND estati` | same, explicit (operators in **uppercase**) |
+| `trieste OR sestri` | at least one |
+| `trieste NOT estati` | the first but not the second |
+| `"le estati"` | the **phrase**, adjacent words in that order |
+| `title:trieste` | only in the `title` column |
+
+Unbalanced quotes and parentheses produce a syntax error: the server answers `400 bad_query`.
+
+## curl, explained
+
+<Curl cmd={`curl -sS -G https://corso-api-json.giuseppebosi.com/api/v1/search --data-urlencode 'q=trieste' | jq '.items[] | {id, title, score: (.score*1000|round/1000), snippet}'`} spiega={[
+  ['/search', 'the full-text endpoint; results are already sorted by relevance'],
+  ['round/1000', 'rounds the score to three decimals: the API sends it in full (-3.1252954456330926), here we shorten it to read it'],
+  ["--data-urlencode 'q=trieste'", 'the term; with <code>-G</code> it ends up in the query string, encoded (useful as soon as the query has spaces, quotes or <code>*</code>)'],
+  ['| jq …', 'four fields for each result'],
+]} />
+
+```json
+{ "id": 7,  "title": "Oltre Trieste",          "score": -3.125, "snippet": "Oltre <b>Trieste</b>. Un libro di fantascienza ambientato tra Otranto e Brisighella." }
+{ "id": 57, "title": "Le estati a Trieste",    "score": -2.912, "snippet": "Le estati a <b>Trieste</b>. Un libro di narrativa ambientato tra Camogli e…" }
+{ "id": 72, "title": "Numeri e Trieste",       "score": -2.863, "snippet": "Numeri e <b>Trieste</b>. Un libro di scienza e tecnologia ambientato tra Kepler…" }
+{ "id": 35, "title": "Pensare Sorano",         "score": -2.337, "snippet": "Pensare Sorano. Un libro di saggistica ambientato tra <b>Trieste</b> e Tarvisio." }
+{ "id": 40, "title": "Contro Ustica",          "score": -2.337, "snippet": "Contro Ustica. Un libro di saggistica ambientato tra <b>Trieste</b> e Valdera." }
+…
+```
+
+Eight results: the three with *Trieste* in the **title** (shorter → more weight) come before those that only mention it in the **description**. `GET /books?q=trieste` would find only three, with no relevance order.
+
+Operators and phrases:
+
+<Curl cmd={`curl -sS -G https://corso-api-json.giuseppebosi.com/api/v1/search --data-urlencode 'q=tri*' --data-urlencode 'limit=3' | jq -c '[.items[].title]'
+curl -sS -G https://corso-api-json.giuseppebosi.com/api/v1/search --data-urlencode 'q=trieste AND estati' | jq -c '[.items[].title]'
+curl -sS -G https://corso-api-json.giuseppebosi.com/api/v1/search --data-urlencode 'q=trieste NOT estati' | jq -c '[.items[].title]'
+curl -sS -G https://corso-api-json.giuseppebosi.com/api/v1/search --data-urlencode 'q="le estati"' | jq -c '[.items[].title]'`} spiega={[
+  ["'q=tri*'", 'prefix: <em>Trieste</em>, <em>Tre giorni</em>… The asterisk must be encoded, hence <code>--data-urlencode</code>'],
+  ["'q=trieste AND estati'", 'both words in the document (title or description)'],
+  ["'q=trieste NOT estati'", 'exclusion'],
+  ["'q=\"le estati\"'", 'exact phrase: the double quotes are part of the FTS query and sit inside the shell single quotes'],
+]} />
+
+```
+["Oltre Trieste","Le estati a Trieste","Numeri e Trieste"]
+["Le estati a Trieste"]
+["Oltre Trieste","Numeri e Trieste","Pensare Sorano","Contro Ustica","Oltre Sestri","La caduta di Brisighella","L'universo in Ravello"]
+["Le estati a Alba","Le estati a Trieste"]
+```
+
+And a broken syntax:
+
+<Curl cmd={`curl -sS -G https://corso-api-json.giuseppebosi.com/api/v1/search --data-urlencode 'q="trieste'`} spiega={[
+  ["'q=\"trieste'", 'a quote opened and never closed'],
+]} />
+
+```json
+{"error":{"code":"bad_query","message":"Sintassi di ricerca non valida","details":{"sqlite":"unterminated string"}}}
+```
+
+## Python and TypeScript
+
+A search function that handles the 400 (a badly written user query) without crashing the program, and prints the snippet turning `<b>` into uppercase for the terminal.
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# python3 cerca.py "trieste NOT estati"
+import re, sys
+import httpx
+
+def cerca(q, limit=5):
+    r = httpx.get("https://corso-api-json.giuseppebosi.com/api/v1/search", params={"q": q, "limit": limit})
+    if r.status_code == 400:
+        print("sintassi non valida:", r.json()["error"]["details"]["sqlite"]); return []
+    r.raise_for_status()
+    return r.json()["items"]
+
+for hit in cerca(sys.argv[1] if len(sys.argv) > 1 else "trieste"):
+    evidenziato = re.sub(r"<b>(.*?)</b>", lambda m: m.group(1).upper(), hit["snippet"] or "")
+    print(f'{hit["score"]:7.3f}  {hit["title"]:<25} {evidenziato}')
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types cerca.ts "trieste NOT estati"
+async function cerca(q: string, limit = 5) {
+  const url = new URL("https://corso-api-json.giuseppebosi.com/api/v1/search");
+  url.searchParams.set("q", q); url.searchParams.set("limit", String(limit));
+  const r = await fetch(url);
+  if (r.status === 400) { console.log("sintassi non valida:", (await r.json()).error.details.sqlite); return []; }
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return (await r.json()).items as { title: string; score: number; snippet: string | null }[];
+}
+for (const hit of await cerca(process.argv[2] ?? "trieste")) {
+  const evidenziato = (hit.snippet ?? "").replace(/<b>(.*?)<\/b>/g, (_, w) => w.toUpperCase());
+  console.log(hit.score.toFixed(3).padStart(7), hit.title.padEnd(25), evidenziato);
+}
+```
+</TabItem>
+</Tabs>
+
+Output for `trieste NOT estati`:
+
+```
+ -3.125  Oltre Trieste             Oltre TRIESTE. Un libro di fantascienza ambientato tra Otranto e Brisighella.
+ -2.863  Numeri e Trieste          Numeri e TRIESTE. Un libro di scienza e tecnologia ambientato tra Kepler…
+ -2.337  Pensare Sorano            Pensare Sorano. Un libro di saggistica ambientato tra TRIESTE e Tarvisio.
+ -2.337  Contro Ustica             Contro Ustica. Un libro di saggistica ambientato tra TRIESTE e Valdera.
+ -2.337  Oltre Sestri              Oltre Sestri. Un libro di fantascienza ambientato tra Brisighella e TRIESTE.
+```
+
+<Aside type="tip" title="In the browser">
+If you show the snippet on a page, insert it as HTML only if you trust the source (here you do: the data comes from the server). With user-generated content, sanitize it or build the nodes by hand.
+</Aside>
+
+## Try it now
+
+<Prova path="/api/v1/search?q=trieste" titolo="ranking and snippet" />
+
+<Prova path="/api/v1/search?q=%22le%20estati%22" titolo="a phrase (encoded quotes: %22)" />
+
+<Prova path="/api/v1/books?q=trieste" titolo="the same term with the LIKE filter: compare" />
+
+<Prova path="/api/v1/search?q=%22trieste" titolo="broken syntax: 400 bad_query" />
+
+## Exercise
+
+1. How many books contain the word *Ustica* (title or description) according to `/search`, and how many according to `/books?q=ustica`? Why do they differ?
+2. Find the books that talk about *Sestri* **or** *Camogli* but **not** about *Trieste*.
+3. What happens with `q=x` (a single letter)? And with `q=tr`? Explain the difference between the two outcomes.
+
+<details>
+<summary>Solution</summary>
+
+1. `/search?q=ustica` also finds the books that mention Ustica only in the description ("set between … and Ustica"); `/books?q=ustica` only looks at the title. The numbers depend on the dataset: compare them with `jq '.items | length'` and `jq .meta.total`.
+2. `q=(sestri OR camogli) NOT trieste` — parentheses are allowed in FTS5.
+3. `q=x` → `422 validation_error`: the server requires at least 2 characters (`min_length`). `q=tr` → `200` with zero results: *tr* is not a whole word in any document (you would need `tr*`).
+</details>
+
+## Common mistakes
+
+- **Expecting a substring match**: `q=tri` does not find *Trieste* (you need `tri*`).
+- **Lowercase operators**: `trieste and estati` also searches for the word *and*. They go in UPPERCASE.
+- **Not encoding `*` and `"`** in a hand-written URL.
+- **Sorting by ascending `score` thinking "bigger = better"**: in SQLite bm25 is negative, lower = more relevant. Results already arrive sorted.
+- **Showing `snippet` as text**: you will see literal `<b>` tags.
+
+## Summary
+
+`LIKE` looks for substrings by scanning everything; FTS uses an inverted index, understands words, prefixes, operators and phrases, and sorts by relevance (BM25). `/search` returns `score` and `snippet`; a broken syntax is a 400. Next chapter: numbers instead of rows — aggregations and statistics.
