@@ -85,6 +85,6 @@ Hash da mettere nel blocco Caddy (utente $UTENTE):
 Copia dell'hash (solo root): $DEST
 
 Ora passa l'hash al Controller: Caddy e il reload NON li ho toccati.
-Ricorda di aggiornare dove la password è scritta a mano (es. ARCHITETTURA.md) e di non
+Ricorda di aggiornare dove la password è annotata a mano e di non
 riusarla altrove.
 FINE
