@@ -3,7 +3,7 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
 
 export const SITO = 'https://corso-api-json.giuseppebosi.com';
-export const AUTORE = { nome: 'Giuseppe Bosi', firma: 'Prof. Giuseppe Bosi', url: 'https://www.giuseppebosi.com' };
+export const AUTORE = { nome: 'Giuseppe Bosi', firma: 'Prof. Giuseppe Bosi', url: 'https://www.giuseppebosi.com', linkedin: 'https://www.linkedin.com/in/giuseppebosi' };
 export const ALTRI_CORSI = [
   { titolo: 'Costruisci la tua memoria AI', url: 'https://corso-rag.giuseppebosi.com/' },
   { titolo: 'Corso pratico di llama.cpp', url: 'https://corso-llamacpp.giuseppebosi.com/' },

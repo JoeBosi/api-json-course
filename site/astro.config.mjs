@@ -28,7 +28,7 @@ export default defineConfig({
 						inLanguage: 'it',
 						isAccessibleForFree: true,
 						license: 'https://creativecommons.org/licenses/by/4.0/',
-						author: { '@type': 'Person', name: 'Giuseppe Bosi', honorificPrefix: 'Prof.', url: 'https://www.giuseppebosi.com' },
+						author: { '@type': 'Person', name: 'Giuseppe Bosi', honorificPrefix: 'Prof.', url: 'https://www.giuseppebosi.com', sameAs: ['https://www.linkedin.com/in/giuseppebosi'] },
 						provider: { '@type': 'Person', name: 'Giuseppe Bosi', url: 'https://www.giuseppebosi.com' },
 					}),
 				},

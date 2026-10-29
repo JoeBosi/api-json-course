@@ -23,6 +23,7 @@ export const GET: APIRoute = async () => {
     '## Optional', '',
     `- [Documentazione interattiva dell'API (Swagger UI)](${SITO}/api/docs): tutti gli endpoint del server di prova`,
     `- [Sito dell'autore](${AUTORE.url}): ${AUTORE.firma}`,
+    `- [LinkedIn dell'autore](${AUTORE.linkedin}): profilo professionale di ${AUTORE.firma}`,
     ...ALTRI_CORSI.map((c) => `- [${c.titolo}](${c.url}): un altro corso dello stesso autore`),
     '',
   ].join('\n');

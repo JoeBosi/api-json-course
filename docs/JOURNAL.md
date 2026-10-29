@@ -58,3 +58,6 @@ canonical e Open Graph li genera già Starlight su ogni pagina. JSON-LD `Course`
 autore Prof. Giuseppe Bosi e link a www.giuseppebosi.com; LinkedIn non messo finché la chat
 Curriculum non comunica l'indirizzo definitivo. Piè di pagina: nome dell'autore cliccabile e
 link agli altri corsi pubblici (corso-rag, corso-llamacpp).
+
+## 29/10/2026 — LinkedIn dell autore
+Indirizzo definitivo https://www.linkedin.com/in/giuseppebosi (dal Controller): nel piè di pagina, in JSON-LD (`sameAs`) e in llms.txt. Il vecchio indirizzo non era mai stato usato qui.
