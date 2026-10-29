@@ -66,6 +66,6 @@ export const T = {
   },
 } as const;
 
-/** Il repo su GitHub è ancora privato: il link compare solo quando diventa pubblico. */
-export const GITHUB_PUBBLICO = false;
+/** Il repo su GitHub è pubblico dal 29/10/2026: il link compare nel piè di pagina. */
+export const GITHUB_PUBBLICO = true;
 export const GITHUB = 'https://github.com/JoeBosi/api-json-course';
