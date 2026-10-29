@@ -5,7 +5,7 @@ La password NON viene mai scritta da nessuna parte: nel file .env finisce solo i
 scrypt (CORSO_API_PASSWORD_HASH). Il file viene creato con permessi 600 (solo root lo legge).
 
 Uso (via SSH, sul VPS):
-    cd /root/Developer/corso-api-json && python3 deploy/imposta-password-api.py
+    cd /root/Developer/corso-api-json && api/.venv/bin/python deploy/imposta-password-api.py
 
 Poi serve un riavvio del servizio perché rilegga il .env:
     systemctl restart corso-api-json

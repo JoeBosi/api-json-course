@@ -14,3 +14,6 @@ __pycache__/
 esempi/**/node_modules/
 audio/voci/
 site/public/audio/
+
+# copie di sicurezza degli script di deploy
+deploy/*.bak-*

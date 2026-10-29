@@ -11,7 +11,7 @@
 #     cd /root/Developer/corso-api-json && sudo deploy/installa-utente-api.sh
 #
 # PRIMA va impostata la password dell'API, altrimenti lo script si ferma:
-#     cd /root/Developer/corso-api-json && python3 deploy/imposta-password-api.py
+#     cd /root/Developer/corso-api-json && api/.venv/bin/python deploy/imposta-password-api.py
 set -euo pipefail
 
 UTENTE=corso-api
@@ -33,7 +33,7 @@ info "Controllo la password dell'API"
 if ! grep -qs '^CORSO_API_PASSWORD_HASH=.\+' "$SORGENTE/.env"; then
     errore "manca CORSO_API_PASSWORD_HASH in $SORGENTE/.env.
   Senza, l'API resta spenta e nessuno può accenderla dal sito. Prima lancia:
-      cd $SORGENTE && python3 deploy/imposta-password-api.py"
+      cd $SORGENTE && api/.venv/bin/python deploy/imposta-password-api.py"
 fi
 echo "   c'è (nel file sta solo l'hash)."
 

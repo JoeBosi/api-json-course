@@ -35,8 +35,8 @@ echo
 
 for tentativo in 1 2 3; do
     read -rsp "Nuova password: " p1; echo
-    if [[ ${#p1} -lt 12 ]]; then
-        echo "  Troppo corta: almeno 12 caratteri. Evita date e nomi."; echo; continue
+    if [[ ${#p1} -lt 10 ]]; then
+        echo "  Troppo corta: almeno 10 caratteri. Evita date e nomi."; echo; continue
     fi
     read -rsp "Ripetila: " p2; echo
     if [[ "$p1" != "$p2" ]]; then
@@ -44,7 +44,7 @@ for tentativo in 1 2 3; do
     fi
     break
 done
-[[ -n "${p1:-}" && "${p1:-}" == "${p2:-}" && ${#p1} -ge 12 ]] || errore "password non impostata."
+[[ -n "${p1:-}" && "${p1:-}" == "${p2:-}" && ${#p1} -ge 10 ]] || errore "password non impostata."
 
 # l'hash lo calcola caddy; la password passa solo sullo stdin del comando
 # nota: caddy legge una RIGA dallo stdin, quindi il \n ci vuole (senza, risponde "EOF")
