@@ -37,7 +37,8 @@ const manifest = JSON.parse(readFileSync(new URL('../public/audio/manifest.json'
 let totP = 0, totA = 0;
 for (const slug of Object.keys(manifest.pagine)) {
   await p.goto(`${BASE}/${slug}/`, { waitUntil: 'domcontentloaded' });
-  await p.waitForFunction(pronto, null, { timeout: 15000 });
+  try { await p.waitForFunction(pronto, null, { timeout: 15000 }); }
+  catch { ok(false, `${slug}: il lettore audio non si è preparato`); continue; }
   const r = await p.evaluate(() => { const l = document.querySelector('lettura-audio'); return { t: l.pars.length, a: l.el.filter(Boolean).length, miss: l.pars.filter((x, k) => !l.el[k]).slice(0, 2).map(x => x.t.slice(0, 40)) }; });
   totP += r.t; totA += r.a;
   if (r.a / r.t < 0.95) ok(false, `${slug}: ${r.a}/${r.t} — es. ${JSON.stringify(r.miss)}`);

@@ -262,6 +262,10 @@ def main():
             for x in b:
                 flag = ("[PAUSA] " if x.get("pausa") else "") + ("[nascosto] " if x.get("nascosto") else "")
                 print(f"- ({x['tipo']}) {flag}{x['voce'][:200]}")
+    if not a.pagina:
+        # via le pagine che non esistono più (o che non vanno lette, come quelle in docs/en/)
+        attuali = {slug(f) for f in files}
+        manifest["pagine"] = {k: v for k, v in manifest["pagine"].items() if k in attuali}
     MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=1))
     print(f"{len(files)} pagine, {tot} paragrafi → {MANIFEST.relative_to(RADICE)}")
 
