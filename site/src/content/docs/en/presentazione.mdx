@@ -1,0 +1,48 @@
+---
+title: About the course
+description: Who it is for, how it is organized, how to use the test server.
+---
+
+## Who it is for
+
+For anyone who knows the basics of **Python** and/or **JavaScript** (variables, functions, lists and dictionaries/objects) and wants to master two things that are everywhere today:
+
+1. **JSON**, the format programs, APIs and databases use to exchange data;
+2. **HTTP APIs** used to query (and change) the data in a database, from a simple `GET` to queries across several tables linked by primary and foreign keys.
+
+You do not need to know SQL: you will meet it gradually in Section 2, always through the API.
+
+## How it is organized
+
+Every chapter follows the same pattern:
+
+- **Goals** — what you will be able to do by the end.
+- **Theory** — the minimum you need, with examples.
+- **curl, explained option by option** — the "bare" request, to really understand what goes over the wire.
+- **Python and TypeScript side by side** — the same example in both languages (pick the tab: the site remembers it).
+- **Try it now** — a button that runs the request from your browser against the test server and shows the response.
+- **Exercise** with solution, and **common mistakes**.
+
+## Listening instead of reading
+
+The Italian version of each chapter can be read aloud by your browser's speech synthesis, with the current paragraph highlighted: switch to **Italiano** with the language selector at the top of the page. The English pages are meant to be read.
+
+## The test server
+
+`https://corso-api-json.giuseppebosi.com/api/v1` serves the catalog of a made-up bookshop, the **Aurora Bookshop** (*Libreria Aurora*): 80 books, 20 authors, 10 (nested) categories, 40 customers, 120 orders, reviews and tags. The tables are linked by foreign keys, just like in a real database. The data itself (titles, names, cities) is in Italian; field names are in English. Full description: [The dataset](/en/riferimento/dataset/).
+
+- **Without a token** you read the public data (read-only).
+- **With a sandbox** (a token you create with one call) you work on a **private copy** of the database: create, update, delete, and nobody else sees it. The copy expires after a few hours of inactivity.
+- There is a per-minute request limit per IP address: it is a teaching server, not a production service.
+- When nobody uses it, the test API is off: you switch it on from [Switch on the test API](/en/api-attiva/).
+- Interactive documentation (Swagger UI): [/api/docs](/api/docs).
+
+## You can also run it on your own computer
+
+The whole course — site and server — is an open project: `git clone`, then `./bootstrap.sh` and `cd api && uv run fastapi dev app/main.py --port 8795`. The examples point to the same `/api/v1` path, so they work the same way.
+
+## About
+
+The course is free and reusable: texts under the [CC BY 4.0](/en/crediti/#license) license, code under the MIT license. Details, tools used and trademarks mentioned are in [Credits and licenses](/en/crediti/); what the site stores (very little) is in [Privacy](/en/privacy/).
+
+Errors and suggestions: [info@giuseppebosi.com](mailto:info@giuseppebosi.com).

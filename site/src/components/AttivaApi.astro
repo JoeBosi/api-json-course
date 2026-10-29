@@ -5,28 +5,28 @@
  * Gli endpoint /api/v1/interruttore rispondono anche con l'API spenta.
  */
 const base = import.meta.env.PUBLIC_API_BASE ?? '';
+import { T, lingua } from '../lib/i18n';
+const tr = T[lingua(Astro.locals.starlightRoute.lang)].attiva;
 ---
-<attiva-api class="attiva not-content" data-base={base}>
-  <p class="attiva__stato" data-stato>Controllo lo stato dell'API…</p>
+<attiva-api class="attiva not-content" data-base={base} data-t={JSON.stringify(tr)}>
+  <p class="attiva__stato" data-stato>{tr.controllo}</p>
 
   <form class="attiva__form" data-form hidden>
-    <label>Password
+    <label>{tr.password}
       <input type="password" data-password autocomplete="current-password" required
-             placeholder="password dell'API di prova" />
+             placeholder={tr.placeholder} />
     </label>
-    <button class="primario" type="submit" data-invia>Accendi l'API</button>
+    <button class="primario" type="submit" data-invia>{tr.accendi}</button>
     <p class="attiva__errore" data-errore hidden></p>
   </form>
 
-  <p class="attiva__nota" data-nota hidden>
-    Finché resta accesa puoi eseguire tutti gli esempi del corso. Dopo un'ora senza chiamate
-    si spegne da sola e questa pagina te lo dirà.
-  </p>
+  <p class="attiva__nota" data-nota hidden>{tr.nota}</p>
 </attiva-api>
 
 <script>
   class AttivaApi extends HTMLElement {
     base = this.dataset.base ?? '';
+    t = JSON.parse(this.dataset.t || '{}');
     timer: number | undefined;
 
     connectedCallback() {
@@ -49,7 +49,7 @@ const base = import.meta.env.PUBLIC_API_BASE ?? '';
         this.mostra(dati);
         if (dati.attiva) this.timer = window.setTimeout(() => this.aggiorna(), 30_000);
       } catch {
-        this.q('[data-stato]').textContent = 'Non riesco a contattare il server. Riprova più tardi.';
+        this.q('[data-stato]').textContent = this.t.nonContatto;
       }
     }
 
@@ -58,16 +58,16 @@ const base = import.meta.env.PUBLIC_API_BASE ?? '';
       const form = this.q<HTMLFormElement>('[data-form]');
       const nota = this.q('[data-nota]');
       if (s.configurata === false) {
-        stato.textContent = 'L’interruttore non è ancora configurato sul server.';
+        stato.textContent = this.t.nonConfigurata;
         form.hidden = true; nota.hidden = true;
         return;
       }
       if (s.attiva) {
         const min = Math.max(1, Math.round((s.spegnimento_tra_s ?? 0) / 60));
-        stato.innerHTML = `<b class="attiva__on">L’API di prova è accesa.</b> Si spegne fra circa ${min} minuti se nessuno la usa.`;
+        stato.innerHTML = `<b class="attiva__on">${this.t.accesa}</b> ${this.t.spegneTra.replace('{min}', String(min))}`;
         form.hidden = true; nota.hidden = false;
       } else {
-        stato.innerHTML = '<b class="attiva__off">L’API di prova è spenta.</b> Inserisci la password per accenderla.';
+        stato.innerHTML = `<b class="attiva__off">${this.t.spenta}</b> ${this.t.inserisci}`;
         form.hidden = false; nota.hidden = true;
       }
     }
@@ -84,10 +84,10 @@ const base = import.meta.env.PUBLIC_API_BASE ?? '';
           body: JSON.stringify({ password: campo.value }),
         });
         if (ok) { campo.value = ''; this.mostra(dati); return; }
-        errore.textContent = dati?.error?.message ?? 'Non è stato possibile accendere l’API.';
+        errore.textContent = dati?.error?.message ?? this.t.nonRiuscito;
         errore.hidden = false;
       } catch {
-        errore.textContent = 'Non riesco a contattare il server.';
+        errore.textContent = this.t.nonServer;
         errore.hidden = false;
       } finally {
         bottone.disabled = false;

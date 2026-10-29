@@ -1,24 +1,27 @@
 ---
 /** Pannello "La tua sandbox": crea/azzera/elimina il token e lo salva nel browser. */
 const base = import.meta.env.PUBLIC_API_BASE ?? '';
+import { T, lingua } from '../lib/i18n';
+const tr = T[lingua(Astro.locals.starlightRoute.lang)].sandbox;
 ---
-<sandbox-pannello class="sandbox not-content" data-base={base}>
-  <strong>La tua sandbox</strong>
-  <p data-stato>Nessuna sandbox attiva in questo browser.</p>
+<sandbox-pannello class="sandbox not-content" data-base={base} data-t={JSON.stringify(tr)}>
+  <strong>{tr.titolo}</strong>
+  <p data-stato>{tr.nessuna}</p>
   <p class="sandbox__token" data-token hidden></p>
   <div class="prova__azioni">
-    <button class="primario" data-crea>Crea sandbox</button>
-    <button data-reset hidden>Azzera i dati</button>
-    <button data-elimina hidden>Elimina</button>
-    <button data-copia hidden>Copia token</button>
+    <button class="primario" data-crea>{tr.crea}</button>
+    <button data-reset hidden>{tr.reset}</button>
+    <button data-elimina hidden>{tr.elimina}</button>
+    <button data-copia hidden>{tr.copia}</button>
   </div>
 </sandbox-pannello>
 <script>
   const CHIAVE = 'corso-api-json.sandbox';
   class SandboxPannello extends HTMLElement {
+    get t() { return JSON.parse(this.dataset.t || '{}'); }
     connectedCallback() {
       this.q('[data-crea]').onclick = () => this.crea();
-      this.q('[data-reset]').onclick = () => this.chiama('POST', '/api/v1/sandbox/reset', 'Dati riportati allo stato iniziale.');
+      this.q('[data-reset]').onclick = () => this.chiama('POST', '/api/v1/sandbox/reset', this.t.resetOk);
       this.q('[data-elimina]').onclick = () => this.elimina();
       this.q('[data-copia]').onclick = () => navigator.clipboard?.writeText(this.token);
       this.render();
@@ -30,19 +33,19 @@ const base = import.meta.env.PUBLIC_API_BASE ?? '';
       const c = !!this.token;
       this.q('[data-token]').hidden = !c; this.q('[data-token]').textContent = c ? 'Token: ' + this.token : '';
       for (const s of ['[data-reset]', '[data-elimina]', '[data-copia]']) this.q(s).hidden = !c;
-      this.q('[data-crea]').textContent = c ? 'Crea una nuova sandbox' : 'Crea sandbox';
-      if (!c) this.q('[data-stato]').textContent = 'Nessuna sandbox attiva in questo browser.';
+      this.q('[data-crea]').textContent = c ? this.t.creaNuova : this.t.crea;
+      if (!c) this.q('[data-stato]').textContent = this.t.nessuna;
     }
     async crea() {
       const r = await fetch(this.dataset.base + '/api/v1/sandbox', { method: 'POST' });
       const j = await r.json();
-      if (!r.ok) { this.q('[data-stato]').textContent = 'Errore: ' + (j.error?.message ?? r.status); return; }
+      if (!r.ok) { this.q('[data-stato]').textContent = this.t.errore + (j.error?.message ?? r.status); return; }
       this.token = j.token;
-      this.q('[data-stato]').textContent = `Sandbox creata. Scade il ${new Date(j.expires_at).toLocaleString('it-IT')} (si rinnova a ogni uso).`;
+      this.q('[data-stato]').textContent = this.t.creata.replace('{data}', new Date(j.expires_at).toLocaleString(this.t.locale));
     }
     async chiama(m: string, p: string, msg: string) {
       const r = await fetch(this.dataset.base + p, { method: m, headers: { Authorization: 'Bearer ' + this.token } });
-      this.q('[data-stato]').textContent = r.ok ? msg : `Errore ${r.status}: token scaduto? Creane una nuova.`;
+      this.q('[data-stato]').textContent = r.ok ? msg : `${this.t.errore}${r.status}: ${this.t.scaduto}`;
       if (r.status === 401) this.token = '';
     }
     async elimina() {

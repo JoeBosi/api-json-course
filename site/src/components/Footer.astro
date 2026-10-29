@@ -4,27 +4,31 @@
  * aggiunge le informazioni dell'opera: autore, contatto, licenza, crediti e privacy.
  */
 import Default from '@astrojs/starlight/components/Footer.astro';
+import { GITHUB, GITHUB_PUBBLICO, T, lingua, pre } from '../lib/i18n';
+const l = lingua(Astro.locals.starlightRoute.lang);
+const f = T[l].footer;
+const p = pre(l);
 ---
 
 <Default><slot /></Default>
 
 <footer class="corso-footer not-content">
   <p>
-    <strong>Corso JSON &amp; API</strong> di <a href="https://www.giuseppebosi.com" rel="author">Giuseppe Bosi</a> (<a href="https://www.linkedin.com/in/giuseppebosi" rel="me noopener" target="_blank">LinkedIn</a>) — opera di divulgazione gratuita.
-    Scrivi a <a href="mailto:info@giuseppebosi.com">info@giuseppebosi.com</a>.
+    <strong>{l === 'en' ? 'JSON & API Course' : 'Corso JSON & API'}</strong> {f.di} <a href={T[l].sitoAutore} rel="author">Giuseppe Bosi</a> (<a href="https://www.linkedin.com/in/giuseppebosi" rel="me noopener" target="_blank">LinkedIn</a>) — {f.opera}
+    {f.scrivi} <a href="mailto:info@giuseppebosi.com">info@giuseppebosi.com</a>.
   </p>
   <p>
-    Testi <a href="https://creativecommons.org/licenses/by/4.0/deed.it" rel="license noopener" target="_blank">CC BY 4.0</a>,
-    codice degli esempi <a href="/crediti/#licenza">MIT</a> ·
-    <a href="/crediti/">Crediti e licenze</a> ·
-    <a href="/privacy/">Privacy</a> ·
-    <a href="https://github.com/JoeBosi/api-json-course" rel="noopener" target="_blank">Codice sorgente su GitHub</a>
+    {f.testi} <a href={`https://creativecommons.org/licenses/by/4.0/${l === 'en' ? '' : 'deed.it'}`} rel="license noopener" target="_blank">CC BY 4.0</a>,
+    {f.codice} <a href={`${p}/crediti/#${l === 'en' ? 'license' : 'licenza'}`}>MIT</a> ·
+    <a href={`${p}/crediti/`}>{f.crediti}</a> ·
+    <a href={`${p}/privacy/`}>{f.privacy}</a>
+    {GITHUB_PUBBLICO && <> · <a href={GITHUB} rel="noopener" target="_blank">{f.github}</a></>}
   </p>
   <p>
-    Altri corsi dello stesso autore:
-    <a href="https://corso-rag.giuseppebosi.com/">Costruisci la tua memoria AI</a> ·
-    <a href="https://corso-llamacpp.giuseppebosi.com/">Corso pratico di llama.cpp</a> ·
-    <a href="https://www.giuseppebosi.com">www.giuseppebosi.com</a>
+    {f.altri}
+    <a href="https://corso-rag.giuseppebosi.com/">Costruisci la tua memoria AI{l === 'en' && ' (RAG course, in Italian)'}</a> ·
+    <a href="https://corso-llamacpp.giuseppebosi.com/">Corso pratico di llama.cpp{l === 'en' && ' (llama.cpp course, in Italian)'}</a> ·
+    <a href={T[l].sitoAutore}>www.giuseppebosi.com</a>
   </p>
 </footer>
 

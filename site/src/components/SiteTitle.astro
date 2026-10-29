@@ -4,12 +4,22 @@
  * sua home. Sostituisce il SiteTitle di Starlight (qui non c'è un logo, quindi basta il testo).
  * La barra di Starlight è fissa in cima: la scritta resta visibile anche scorrendo la pagina.
  */
-const { siteTitle, siteTitleHref } = Astro.locals.starlightRoute;
+import { T, lingua } from '../lib/i18n';
+const { siteTitle, siteTitleHref, lang } = Astro.locals.starlightRoute;
+const l = lingua(lang);
+// Link all'altra lingua, sempre visibile (anche su telefono, dove il selettore di Starlight sta nel menu)
+const percorso = Astro.url.pathname;
+const altra = l === 'en'
+  ? { href: percorso.replace(/^\/en(\/|$)/, '/'), testo: 'IT', lang: 'it', titolo: 'Leggi in italiano' }
+  : { href: '/en' + percorso, testo: 'EN', lang: 'en', titolo: 'Read in English' };
 ---
 
 <div class="titolo-corso">
-  <a href={siteTitleHref} class="site-title" translate="no">{siteTitle}</a>
-  <a class="autore" href="https://www.giuseppebosi.com" rel="author">Prof. Giuseppe Bosi</a>
+  <div class="riga-titolo">
+    <a href={siteTitleHref} class="site-title" translate="no">{siteTitle}</a>
+    <a class="lingua" href={altra.href} hreflang={altra.lang} lang={altra.lang} title={altra.titolo}>{altra.testo}</a>
+  </div>
+  <a class="autore" href={T[l].sitoAutore} rel="author">{T[l].autore}</a>
 </div>
 
 <style>
@@ -21,6 +31,15 @@ const { siteTitle, siteTitleHref } = Astro.locals.starlightRoute;
     min-width: 0;
     line-height: 1.15;
   }
+  .riga-titolo { display: flex; align-items: baseline; gap: .5rem; min-width: 0; }
+  .lingua {
+    font-size: var(--sl-text-xs);
+    font-weight: 600;
+    color: var(--sl-color-gray-2);
+    text-decoration: none;
+    flex-shrink: 0;
+  }
+  .lingua:hover, .lingua:focus-visible { color: var(--sl-color-text-accent); text-decoration: underline; }
   .site-title {
     font-size: var(--sl-text-h5);
     font-weight: 600;

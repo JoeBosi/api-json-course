@@ -1,0 +1,39 @@
+---
+title: JSON & API Course
+description: From zero to expert on JSON (Python and TypeScript) and on querying databases through APIs, with a test server to practise on right away.
+template: splash
+hero:
+  tagline: "Two learning paths, a public test server and nothing to install to get started: read, run, understand."
+  actions:
+    - text: Start with Section 1
+      link: /en/json/01-cos-e-json/
+      icon: right-arrow
+    - text: Go to Section 2
+      link: /en/db-api/01-http-e-rest/
+      variant: minimal
+    - text: Test API (Swagger)
+      link: /api/docs
+      variant: minimal
+      icon: external
+---
+import { Card, CardGrid } from '@astrojs/starlight/components';
+import Prova from '../../../components/Prova.astro';
+
+<CardGrid stagger>
+  <Card title="Section 1 · JSON from zero to expert" icon="document">
+    Syntax, types, pitfalls, `json` in Python, `JSON.parse` in JavaScript, typing in TypeScript and pydantic, JSON Schema, streaming, performance, JSON in databases. 15 chapters.
+  </Card>
+  <Card title="Section 2 · Databases through APIs" icon="rocket">
+    HTTP and REST, curl explained option by option, filtering and pagination, relations and foreign keys, writes in a sandbox, errors, authentication, full-text search, aggregations, structured queries, SQL with JOINs over the API, transactions, caching, security. 17 chapters.
+  </Card>
+  <Card title="A real server to practise on" icon="setting">
+    Every example runs against `https://corso-api-json.giuseppebosi.com/api/v1`: a book catalog with authors, categories, customers, orders and reviews. With a personal **sandbox** you can write too.
+  </Card>
+  <Card title="Python and TypeScript side by side" icon="laptop">
+    Every example is shown in curl, Python and TypeScript. Pick your tab once and the site remembers it on every page.
+  </Card>
+</CardGrid>
+
+## Try it now, nothing to install
+
+<Prova path="/api/v1/books?limit=3&sort=-price" titolo="the three most expensive books in the catalog" />
