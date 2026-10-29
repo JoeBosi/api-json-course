@@ -1,0 +1,211 @@
+---
+title: "4. Python: json basics"
+description: "The standard library json module: loads, dumps, load, dump, indent, sort_keys, ensure_ascii, separators, JSONDecodeError and the type conversion table."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../../components/Prova.astro';
+import Curl from '../../../../components/Curl.astro';
+
+## Goals
+
+- Use the four functions of the `json` module: `loads`/`dumps` for strings, `load`/`dump` for files.
+- Control the output: indentation, key order, non-ASCII characters, compactness.
+- Know exactly what each JSON type turns into in Python, and back.
+- Handle `JSONDecodeError` by reading *where* the error is.
+
+## Theory
+
+The `json` module is in the standard library: nothing to install. The functions end in **s** when they work on **s**trings:
+
+| Function | From | To |
+|---|---|---|
+| `json.loads(testo)` | JSON `str` (or `bytes`) | Python object |
+| `json.dumps(oggetto)` | Python object | JSON `str` |
+| `json.load(file)` | file opened for reading | Python object |
+| `json.dump(oggetto, file)` | Python object | writes to the file |
+
+### The conversion table
+
+Decoding (`loads`):
+
+| JSON | Python |
+|---|---|
+| object | `dict` |
+| array | `list` |
+| string | `str` |
+| integer number | `int` (arbitrary precision) |
+| number with `.` or exponent | `float` |
+| `true` / `false` | `True` / `False` |
+| `null` | `None` |
+
+Encoding (`dumps`) also accepts `tuple` (→ array) and, for keys, `int`/`float`/`bool`/`None` (→ converted to strings). **Everything else** — `datetime`, `Decimal`, `set`, dataclasses, your own objects — raises `TypeError: Object of type X is not JSON serializable`. Chapter 5 explains how to extend it.
+
+### The `dumps` parameters you actually use
+
+```python
+json.dumps(obj,
+    indent=2,            # None = compatto su una riga; 2 o 4 = leggibile
+    sort_keys=True,      # chiavi in ordine alfabetico: output stabile per diff e hash
+    ensure_ascii=False,  # True (default) scrive "caff\u00e8"; False scrive "caffè"
+    separators=(",", ":"),  # il più compatto possibile (default con indent=None è (", ", ": "))
+    default=…,           # funzione chiamata per i tipi sconosciuti (capitolo 5)
+)
+```
+
+### `JSONDecodeError`
+
+A subclass of `ValueError` with three useful attributes: `msg`, `pos` (character index), `lineno`/`colno`. Always catch it when the JSON comes from outside.
+
+<Aside type="tip">
+`json.loads` also accepts `bytes`: it detects UTF-8/16/32 encoding by itself. With `httpx` you do not need it: `r.json()` does everything.
+</Aside>
+
+## curl, explained: the same request we will make in Python
+
+Let's get the first two books, with a **query string** that limits the results:
+
+<Curl cmd={`curl -s 'https://corso-api-json.giuseppebosi.com/api/v1/books?limit=2' -o libri.json
+python3 -m json.tool libri.json | head -20`} spiega={[
+  ["'…?limit=2'", 'after <code>?</code> the <em>query string</em> begins: <code>key=value</code> parameters separated by <code>&amp;</code>. The quotes protect <code>?</code> and <code>&amp;</code> from the shell'],
+  ['-o libri.json', '<em>output</em>: saves the response body to the file instead of printing it'],
+  ['python3 -m json.tool libri.json', 'reads the file back, validates it and prints it indented'],
+  ['| head -20', 'only the first 20 lines'],
+]} />
+
+```json
+{
+    "items": [
+        {
+            "id": 1,
+            "title": "Il silenzio di Ustica",
+            "isbn": "978-88-81482-001-1",
+            "author_id": 19,
+            "category_id": 2,
+            "price": 18.71,
+            "pages": 120,
+            "published_year": 2002,
+            "language": "it",
+            "in_stock": true,
+            "attributes": {
+                "format": "brossura",
+                "cover": "morbida",
+                "awards": [],
+                "dimensions_cm": {
+                    "w": 15,
+                    "h": 19
+                },
+```
+
+The response for a **list** is an "envelope": `items` (array), `meta` (pagination) and `links` (next/previous page). We will look at it in depth in Section 2.
+
+<Prova path="/api/v1/books?limit=2" titolo="the envelope of a list: items, meta, links" />
+
+## Python: the full round trip
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx
+# python3 json_base.py
+import json
+import httpx
+
+BASE = "https://corso-api-json.giuseppebosi.com/api/v1"
+
+# 1. Dalla rete: httpx fa json.loads per te
+r = httpx.get(f"{BASE}/books", params={"limit": 2})
+dati = r.json()
+print(type(dati), list(dati))                  # <class 'dict'> ['items', 'meta', 'links']
+print(dati["meta"])                            # {'page': 1, 'limit': 2, 'total': 80, 'pages': 40}
+
+# 2. Lo stesso a mano: testo -> oggetto
+testo = r.text
+dati2 = json.loads(testo)
+assert dati == dati2
+
+# 3. Oggetto -> testo, in tre stili
+primo = dati["items"][0]
+print(json.dumps(primo))                                   # compatto, ASCII, ordine originale
+print(json.dumps(primo, indent=2, ensure_ascii=False))     # leggibile
+print(json.dumps(primo, sort_keys=True, separators=(",", ":")))   # minimo e stabile
+
+# 4. File: dump / load
+with open("libri.json", "w", encoding="utf-8") as f:
+    json.dump(dati["items"], f, indent=2, ensure_ascii=False)
+with open("libri.json", encoding="utf-8") as f:
+    riletti = json.load(f)
+print(len(riletti), riletti[1]["title"])                   # 2 TypeScript e Ferrara
+
+# 5. Tipi: cosa esce da loads
+for chiave in ("id", "price", "in_stock", "avg_rating", "attributes", "title"):
+    print(f"{chiave:12} {type(primo[chiave]).__name__}")
+# id           int / price float / in_stock bool / avg_rating NoneType / attributes dict / title str
+
+# 6. Errori
+try:
+    json.loads('{"id": 7,}')
+except json.JSONDecodeError as e:
+    print(e.msg, "| pos:", e.pos, "| riga:", e.lineno, "colonna:", e.colno)
+    # Expecting property name enclosed in double quotes | pos: 9 | riga: 1 colonna: 10
+```
+</TabItem>
+<TabItem label="TypeScript">
+This chapter is about Python; the JavaScript/TypeScript equivalent (`JSON.parse`, `JSON.stringify`, files with `node:fs`) is chapter 6. Here is just the quick mapping:
+
+```ts
+// Python              -> TypeScript
+// json.loads(testo)   -> JSON.parse(testo)
+// json.dumps(obj)     -> JSON.stringify(obj)
+// json.dumps(obj, indent=2)          -> JSON.stringify(obj, null, 2)
+// json.load(open(p))  -> JSON.parse(await readFile(p, "utf8"))
+// json.dump(obj, f)   -> await writeFile(p, JSON.stringify(obj, null, 2))
+```
+</TabItem>
+</Tabs>
+
+<Aside type="note" title="Why `ensure_ascii=False`?">
+With the default, `"Il caffè"` becomes `"Il caffè"`: valid, but longer and unreadable in logs. If you write files or logs meant for humans, use `ensure_ascii=False` + `encoding="utf-8"` on the file.
+</Aside>
+
+## Exercise
+
+Download `/api/v1/books?limit=100` and write a script that:
+
+1. saves to `catalogo.json` only the `id`, `title`, `price` fields of each book, indented and with sorted keys;
+2. reads the file back and prints the title of the most expensive book;
+3. tries `json.dumps` on the value `{"quando": datetime.now()}` and prints the exception message.
+
+<details>
+<summary>Solution</summary>
+
+```python
+import json
+from datetime import datetime
+import httpx
+
+libri = httpx.get("https://corso-api-json.giuseppebosi.com/api/v1/books", params={"limit": 100}).json()["items"]
+ridotti = [{"id": b["id"], "title": b["title"], "price": b["price"]} for b in libri]
+with open("catalogo.json", "w", encoding="utf-8") as f:
+    json.dump(ridotti, f, indent=2, sort_keys=True, ensure_ascii=False)
+
+with open("catalogo.json", encoding="utf-8") as f:
+    riletti = json.load(f)
+print(max(riletti, key=lambda b: b["price"])["title"])   # Quello che resta di Sestri
+
+try:
+    json.dumps({"quando": datetime.now()})
+except TypeError as e:
+    print(e)   # Object of type datetime is not JSON serializable
+```
+</details>
+
+## Common mistakes
+
+- `json.load(testo)` with a string: `load` wants a **file**; for strings it is `loads`.
+- Forgetting `encoding="utf-8"` in `open()`: on Windows the default can be cp1252 and accented characters get corrupted.
+- Comparing JSON as strings: `'{"a":1,"b":2}' != '{"b":2,"a":1}'` even though they represent the same object. Compare the objects, or serialize with `sort_keys=True`.
+- Using `eval()` to "parse" JSON. Never: it runs arbitrary code.
+
+## Summary
+
+`loads`/`dumps` for strings, `load`/`dump` for files, `indent`/`sort_keys`/`ensure_ascii` to control the output, `JSONDecodeError` for errors. Types map in a predictable way; what does not map (dates, Decimal, objects) is the topic of the next chapter.

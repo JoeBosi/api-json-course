@@ -1,0 +1,222 @@
+---
+title: "2. Syntax and types"
+description: "The complete JSON grammar according to RFC 8259: objects, arrays, strings and escapes, numbers, literals, whitespace, top-level document, MIME type and validators."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../../components/Prova.astro';
+import Curl from '../../../../components/Curl.astro';
+
+## Goals
+
+- Know the **whole** JSON grammar: it is small, and knowing all of it avoids 90% of mistakes.
+- Write strings with special characters (`"`, `\`, newlines, Unicode) by hand without errors.
+- Understand what can sit "at the top" of a document and which `Content-Type` goes with it.
+- Validate JSON from the terminal with `python -m json.tool` and `jq`.
+
+## Theory: the grammar on one page
+
+[RFC 8259](https://www.rfc-editor.org/rfc/rfc8259) defines JSON with a handful of rules. A **value** is one of these seven things:
+
+```
+valore  = oggetto | array | stringa | numero | true | false | null
+```
+
+(*oggetto* = object, *stringa* = string, *numero* = number.)
+
+### Object
+
+Braces, zero or more **members** separated by commas. Each member is `string : value`. The key is **always a string** in double quotes.
+
+```json
+{ "id": 7, "title": "Oltre Trieste", "in_stock": false }
+{}
+```
+
+### Array
+
+Square brackets, zero or more values separated by commas. The values can be of different types (but in practice a "mixed" array is almost always a design mistake).
+
+```json
+["Strega", "Bancarella"]
+[1, "due", true, null, {"tre": 3}, [4]]
+[]
+```
+
+### String
+
+Double quotes, any Unicode character **except** `"`, `\` and the control characters (below U+0020), which must be *escaped*:
+
+| Sequence | Meaning |
+|---|---|
+| `\"` | double quote |
+| `\\` | backslash |
+| `\/` | slash (escaping is optional) |
+| `\n` `\t` `\r` | newline, tab, carriage return |
+| `\b` `\f` | backspace, form feed |
+| `\uXXXX` | Unicode character with 4 hex digits, e.g. `è` = `è` |
+
+Characters outside the *Basic Multilingual Plane* (emoji, for example) are written as a **surrogate pair**: `😀` is written `😀`. But since JSON is UTF-8, you can write `"caffè 😀"` directly: escapes are only needed if you want to stay in pure ASCII.
+
+```json
+"Ha detto: \"ciao\"\nSeconda riga — fine"
+```
+
+### Number
+
+An optionally negative integer, with a fractional part and/or an exponent:
+
+```
+-?  (0 | [1-9][0-9]*)  (.[0-9]+)?  ([eE][+-]?[0-9]+)?
+```
+
+Valid: `0`, `-12`, `18.71`, `1e3`, `6.02E-23`. **Not** valid: `01` (leading zero), `.5`, `5.`, `+3`, `0x1F`, `NaN`, `Infinity`. JSON does not distinguish integers from decimals: `2002` and `2002.0` are both "numbers"; it is the language that interprets them (chapter 3).
+
+### Literals
+
+`true`, `false`, `null` — lowercase, no quotes. `True`, `NULL`, `None` are errors.
+
+### Whitespace
+
+Space, tab and newline (`\n`, `\r`) are allowed **between** tokens, anywhere. That is all that separates a "compact" JSON from an "indented" one:
+
+```json
+{"id":7,"awards":["Strega"]}
+```
+```json
+{
+  "id": 7,
+  "awards": [
+    "Strega"
+  ]
+}
+```
+
+<Aside type="note" title="Top-level document">
+RFC 8259 allows **any value** as a whole document: `42`, `"ciao"`, `null` are valid JSON documents. Older versions (RFC 4627) only accepted objects and arrays, and some old tools still require that. By convention, APIs respond with an object (or an array).
+</Aside>
+
+### MIME type
+
+The official type is **`application/json`**. The charset is implicitly UTF-8 (RFC 8259 makes it mandatory for interchange), so `application/json; charset=utf-8` is redundant but harmless. Variants like `text/json` are historical mistakes.
+
+## curl, explained: looking at the Content-Type
+
+Let's request a book and ask curl to also show the response **headers**:
+
+<Curl cmd={`curl -s -i https://corso-api-json.giuseppebosi.com/api/v1/books/7`} spiega={[
+  ['-s', 'silent: no progress bar'],
+  ['-i', '<em>include</em>: also prints the status line and the HTTP response headers, before the body'],
+  ['/api/v1/books/7', 'the resource: the book with id 7'],
+]} />
+
+Response (headers shortened):
+
+```http
+HTTP/1.1 200 OK
+content-type: application/json
+etag: "…"
+cache-control: public, max-age=60
+
+{"id":7,"title":"Oltre Trieste","isbn":"978-88-36071-007-2","author_id":12,"category_id":3,"price":28.25,"pages":642,"published_year":2001,"language":"es","in_stock":false,"attributes":{"format":"tascabile","cover":"morbida","awards":["Strega","Bancarella"],"dimensions_cm":{"w":14,"h":23},"ebook":true},"created_at":"2024-11-27T00:00:00Z","reviews_count":4,"avg_rating":3.5}
+```
+
+`content-type: application/json` is the contract: "the body is JSON, decode it as UTF-8". The body is **compact** (no extra whitespace): over the wire, indentation costs bytes. Notice all the types in a single response: numbers (`28.25`, `642`), strings, `false`, a nested object (`attributes`), an array (`awards`); `null` is not here but can appear (`avg_rating` is `null` for books with no reviews).
+
+<Prova path="/api/v1/books/7" titolo="book 7: every type in one response" />
+
+## Validating from the terminal
+
+Two tools worth having at your fingertips.
+
+<Curl cmd={`curl -s https://corso-api-json.giuseppebosi.com/api/v1/books/7 | python3 -m json.tool`} spiega={[
+  ['|', 'the shell <em>pipe</em>: the output of curl becomes the input of the command on the right'],
+  ['python3 -m json.tool', 'a standard library module: reads JSON from stdin, validates it and prints it indented. If it is not valid it exits with an error and the position'],
+]} />
+
+<Curl cmd={`curl -s https://corso-api-json.giuseppebosi.com/api/v1/books/7 | jq '.attributes.awards'`} spiega={[
+  ['jq', 'a command-line tool for JSON (to install: <code>apt install jq</code>, <code>brew install jq</code>, <code>winget install jqlang.jq</code>)'],
+  ["'.attributes.awards'", 'the <em>filter</em>: <code>.</code> is the document, <code>.attributes</code> goes into the key, <code>.awards</code> into the sub-key. The single quotes stop the shell from interpreting special characters'],
+]} />
+
+Output: `["Strega", "Bancarella"]`. We will go deeper into `jq` in chapter 10.
+
+## Python and TypeScript: validating a string
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# python3 sintassi.py
+import json
+
+validi = ['{"id": 7}', '[1, 2, 3]', '"solo una stringa"', '42', 'null', '{"s": "caff\\u00e8 \\"ok\\""}']
+non_validi = ["{'id': 7}", '{"id": 7,}', '[01]', 'True', '{"a": NaN}', '{"s": "a capo\nreale"}']
+
+for testo in validi + non_validi:
+    try:
+        valore = json.loads(testo)
+        print("VALIDO    ", repr(testo), "->", repr(valore))
+    except json.JSONDecodeError as e:
+        print("NON VALIDO", repr(testo), "->", e.msg, "alla posizione", e.pos)
+```
+
+Watch out for one detail: `json.loads('{"a": NaN}')` in Python **does not fail**, because the module accepts `NaN`, `Infinity` and `-Infinity` as an extension. We discuss it in chapter 3.
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types sintassi.ts
+const validi = ['{"id": 7}', '[1, 2, 3]', '"solo una stringa"', '42', 'null', '{"s": "caff\\u00e8 \\"ok\\""}'];
+const nonValidi = ["{'id': 7}", '{"id": 7,}', '[01]', 'True', '{"a": NaN}', '{"s": "a capo\nreale"}'];
+
+for (const testo of [...validi, ...nonValidi]) {
+  try {
+    const valore: unknown = JSON.parse(testo);
+    console.log("VALIDO    ", JSON.stringify(testo), "->", valore);
+  } catch (e) {
+    console.log("NON VALIDO", JSON.stringify(testo), "->", (e as SyntaxError).message);
+  }
+}
+```
+
+Here `NaN` is **rejected**: `JSON.parse` follows the standard to the letter.
+</TabItem>
+</Tabs>
+
+## Exercise
+
+Which of these are valid JSON? For each one that is not, say why.
+
+1. `{"a": 1, "b": [true, null]}`
+2. `{"a": 'uno'}`
+3. `[1, 2, 3,]`
+4. `{"nome": "O\"Brien"}`
+5. `"2024-11-27T00:00:00Z"`
+6. `{a: 1}`
+7. `1.`
+
+Then check your answer by sending each one to `/api/v1/echo` (the server tells you whether it understood it as JSON, field `json`, or received it as raw text, field `_raw`):
+
+<Prova method="POST" path="/api/v1/echo" body={`[1, 2, 3,]`} titolo="echo: change the body and watch json / _raw" />
+
+<details>
+<summary>Solution</summary>
+
+1. Valid.
+2. Not valid: single quotes.
+3. Not valid: trailing comma.
+4. Valid: `\"` is the correct escape.
+5. Valid: a document can be a single string (any top-level value).
+6. Not valid: unquoted key (that is JavaScript syntax, not JSON).
+7. Not valid: at least one digit is required after the dot.
+</details>
+
+## Common mistakes
+
+- **Unquoted or single-quoted keys** (`{a: 1}`, `{'a': 1}`): fine in JavaScript, not in JSON.
+- **Comma after the last element**: `[1,2,]`, `{"a":1,}`.
+- **A "real" newline inside a string** instead of `\n`.
+- **Leading zero** (`007`), `+`, `.5`: non-conforming numbers.
+- **Wrong or missing `content-type`** in requests: the server responds 415 or 422 (Section 2, chapter 7).
+
+## Summary
+
+Seven value types, two containers, always double quotes, escapes for special characters, free whitespace between tokens, `application/json` as the label. Next chapter: what JSON **cannot** do (dates, precision, comments) and how to live with it.

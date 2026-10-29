@@ -1,0 +1,225 @@
+---
+title: "3. Limits and pitfalls"
+description: "What JSON cannot represent and how to work around it: comments, dates, number precision, big integers, NaN, Unicode, duplicate keys, order, null vs missing, depth."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../../components/Prova.astro';
+import Curl from '../../../../components/Curl.astro';
+
+## Goals
+
+- Know in advance where JSON will let you down: it is always the same eight points.
+- Represent dates, money amounts and big integers without losing information.
+- Tell "missing field" apart from "`null` field", and understand when it matters.
+- Know what Python and JavaScript **actually** do in edge cases (not always the same thing).
+
+## Theory: the eight pitfalls
+
+### 1. No comments
+
+JSON has no comments. `// note` or `/* … */` make the document invalid. If you need notes in a configuration file, the alternatives are: a conventional key (`"_comment": "…"`), or a different format (JSON5, VS Code's JSONC, YAML, TOML). Data travelling through an API does not need comments.
+
+### 2. No trailing commas
+
+`[1, 2, 3,]` is invalid. It is the most frequent mistake when building JSON "by hand" by concatenating strings: **never do it**, always use the library (`json.dumps`, `JSON.stringify`).
+
+### 3. No dates
+
+JSON has no date type. The universal convention is an **ISO 8601 string** (RFC 3339): `"2024-11-27T00:00:00Z"`. The `Z` means UTC; alternatively an offset, `+02:00`. Whoever reads it has to *know* that field is a date and convert it (chapters 5 and 6). Avoid numeric timestamps (`1732665600`): they are ambiguous (seconds? milliseconds?) and unreadable.
+
+In our API every field ending in `_at` is an ISO date in UTC:
+
+```json
+"created_at": "2024-11-27T00:00:00Z"
+```
+
+### 4. Numbers: precision and size
+
+JSON only says "it is a number". Whoever reads it decides how to represent it, and two problems arise here.
+
+**Decimals.** `0.1` in binary floating point (IEEE 754 double) is not exact: `0.1 + 0.2` gives `0.30000000000000004` in every language that uses doubles, that is JavaScript always and Python with `float`. For **money** this is unacceptable: either use integers in cents (`1871` for €18.71), or decode decimals with an exact type (`Decimal` in Python, chapter 5). Our API uses `price: 18.71` to keep things simple for teaching; a payments API would use cents or strings.
+
+**Big integers.** JavaScript represents numbers as doubles: integers are exact only up to **2⁵³ − 1 = 9 007 199 254 740 991** (`Number.MAX_SAFE_INTEGER`). A 64-bit id like `9007199254740993` is silently *rounded*. Python, on the other hand, has arbitrary-precision integers and reads it exactly. Serious APIs serialize big ids **as strings** for exactly this reason (Twitter has done it since 2010: `id_str`).
+
+**NaN and Infinity** do not exist in JSON. `JSON.stringify(NaN)` produces `"null"`; Python `json.dumps(float('nan'))` produces `NaN`, which is *invalid* JSON (a Python extension: turn it off with `allow_nan=False`).
+
+### 5. Unicode and escapes
+
+JSON is UTF-8. `"caffè"` and `"caff\u00e8"` are the same value. Python, by default, writes the second form (`ensure_ascii=True`): safe but unreadable and longer. JavaScript writes the first. Neither is "wrong": it is just a serialization choice.
+
+### 6. Duplicate keys
+
+`{"dup": 1, "dup": 2}` is syntactically allowed but the standard says the behavior "is unpredictable". In practice Python and JavaScript keep the **last** value. Never rely on it; in Python you can catch them with `object_pairs_hook` (chapter 5).
+
+### 7. Key order
+
+The standard says objects are **unordered**. In practice Python (since 3.7) and JavaScript preserve insertion order, and almost everyone relies on it. Rule of thumb: do not write code that depends on order; if you want stable output for comparisons or hashes, sort explicitly (`sort_keys=True`).
+
+### 8. `null` is not "missing"
+
+These are three different situations, and a well-designed API tells them apart:
+
+| Situation | JSON | Typical meaning |
+|---|---|---|
+| missing key | `{}` | "unknown / not applicable / do not change" (PATCH) |
+| key with `null` | `{"pages": null}` | "the value is explicitly empty" |
+| key with an empty value | `{"awards": []}` | "it is there, and it is empty" |
+
+In `PATCH /api/v1/books/7` (Section 2, chapter 6) `{"pages": null}` clears the field, while `{}` changes nothing. Likewise `avg_rating: null` (book with no reviews) is different from `avg_rating: 0`.
+
+<Aside type="caution" title="Depth and size">
+The standard sets no limit, but parsers do: Python raises `RecursionError` at around 1000 levels, and many servers reject bodies above a few MB. If a document has more than ~10 levels of nesting, the problem is the data model, not the parser.
+</Aside>
+
+## curl, explained: putting the server to the test
+
+The `/api/v1/echo` endpoint sends back what it receives. If the body **is not valid JSON**, it returns it as raw text in `_raw`:
+
+<Curl cmd={`curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/echo \\
+  -H 'Content-Type: application/json' \\
+  -d '{"a": 1,}'`} spiega={[
+  ['-X POST', 'the HTTP method. Without <code>-X</code>, curl does a GET (or a POST if there is <code>-d</code>, but stating it is clearer)'],
+  ['\\ (at the end of a line)', 'continues the command on the next line: this is shell syntax, not curl'],
+  ["-H 'Content-Type: application/json'", 'adds a header to the request: it tells the server the body is JSON'],
+  ["-d '{\"a\": 1,}'", 'the request <em>body</em>. The shell single quotes protect the JSON double quotes'],
+]} />
+
+```json
+{"method":"POST","path":"/api/v1/echo","query":{},"headers":{…},"json":{"_raw":"{\"a\": 1,}","_note":"il body non è JSON valido"}}
+```
+
+Now an integer above 2⁵³ and a few decimals:
+
+<Curl cmd={`curl -s -X POST https://corso-api-json.giuseppebosi.com/api/v1/echo \\
+  -H 'Content-Type: application/json' \\
+  -d '{"n": 9007199254740993, "f": 0.1, "p": 18.71}'`} spiega={[
+  ['-d …', 'same pattern: method, header, body. The server is written in Python: it will read <code>n</code> exactly and send it back exactly'],
+]} />
+
+```json
+"json":{"n":9007199254740993,"f":0.1,"p":18.71}
+```
+
+The server (Python) kept `9007199254740993`. But if you read this response in **JavaScript**, `JSON.parse` gives it back as `9007199254740992`. Try it below: the widget runs in the browser, that is in JavaScript, and formats the response with `JSON.stringify(JSON.parse(...))`. Watch what happens to the last digit of `n`:
+
+<Prova method="POST" path="/api/v1/echo" body={`{"n": 9007199254740993, "f": 0.1, "p": 18.71}`} titolo="echo: the browser rounds the big integer" />
+
+And duplicate keys plus Unicode:
+
+<Prova method="POST" path="/api/v1/echo" body={`{"s": "caffè 😀", "dup": 1, "dup": 2}`} titolo="echo: the last dup wins, Unicode goes through intact" />
+
+## Python and TypeScript: the edge cases, one by one
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# python3 trappole.py
+import json
+from decimal import Decimal
+from datetime import datetime, timezone
+
+# Interi grandi: esatti
+print(json.loads('{"n": 9007199254740993}'))          # {'n': 9007199254740993}
+
+# Decimali: float per default, Decimal se lo chiedi
+print(json.loads('{"p": 0.1}')["p"] + 0.2)                          # 0.30000000000000004
+print(json.loads('{"p": 0.1}', parse_float=Decimal)["p"] + Decimal("0.2"))   # 0.3
+
+# NaN: Python lo accetta e lo scrive (estensione non standard)
+print(json.dumps(float("nan")))                                     # NaN
+try:
+    json.dumps(float("nan"), allow_nan=False)
+except ValueError as e:
+    print("allow_nan=False ->", e)                                  # Out of range float values are not JSON compliant
+
+# Date: non esistono, si passa da stringhe ISO
+quando = datetime(2024, 11, 27, tzinfo=timezone.utc)
+testo = json.dumps({"created_at": quando.isoformat().replace("+00:00", "Z")})
+print(testo)                                                        # {"created_at": "2024-11-27T00:00:00Z"}
+print(datetime.fromisoformat(json.loads(testo)["created_at"]))      # 2024-11-27 00:00:00+00:00
+
+# Unicode: ensure_ascii
+print(json.dumps({"s": "caffè 😀"}))                      # {"s": "caff\u00e8 \ud83d\ude00"}
+print(json.dumps({"s": "caffè 😀"}, ensure_ascii=False))  # {"s": "caffè 😀"}
+
+# Chiavi duplicate: vince l'ultima
+print(json.loads('{"dup": 1, "dup": 2}'))                 # {'dup': 2}
+
+# null vs assente
+doc = json.loads('{"pages": null}')
+print("pages" in doc, doc["pages"], doc.get("isbn", "assente"))     # True None assente
+```
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types trappole.ts
+
+// Interi grandi: arrotondati oltre 2^53
+console.log(JSON.parse('{"n": 9007199254740993}').n);        // 9007199254740992
+console.log(Number.MAX_SAFE_INTEGER);                        // 9007199254740991
+// BigInt: esatto, ma va serializzato come stringa (capitolo 6)
+console.log(BigInt("9007199254740993") + 1n);                // 9007199254740994n
+
+// Decimali: sempre double
+console.log(JSON.parse('{"p": 0.1}').p + 0.2);               // 0.30000000000000004
+console.log(Math.round((0.1 + 0.2) * 100) / 100);            // 0.3 (arrotondamento esplicito)
+
+// NaN e Infinity: stringify li trasforma in null, parse li rifiuta
+console.log(JSON.stringify({ x: NaN, y: Infinity }));        // {"x":null,"y":null}
+try { JSON.parse('{"x": NaN}'); } catch (e) { console.log((e as Error).message); }
+
+// Date: stringa ISO in uscita (toJSON), Date in entrata solo se lo fai tu
+const quando = new Date(Date.UTC(2024, 10, 27));
+const testo = JSON.stringify({ created_at: quando });
+console.log(testo);                                          // {"created_at":"2024-11-27T00:00:00.000Z"}
+console.log(new Date(JSON.parse(testo).created_at).getFullYear());   // 2024
+
+// Unicode: passa intatto
+console.log(JSON.stringify({ s: "caffè 😀" }));              // {"s":"caffè 😀"}
+
+// Chiavi duplicate: vince l'ultima
+console.log(JSON.parse('{"dup": 1, "dup": 2}'));             // { dup: 2 }
+
+// null vs assente vs undefined (undefined sparisce nello stringify!)
+console.log(JSON.stringify({ a: null, b: undefined }));      // {"a":null}
+const doc = JSON.parse('{"pages": null}');
+console.log("pages" in doc, doc.pages, "isbn" in doc);       // true null false
+```
+</TabItem>
+</Tabs>
+
+## Exercise
+
+Design the JSON for an **invoice** with: a sequential number, an issue date, a total amount in euros (with exact cents), a 64-bit customer identifier, and an optional "notes" field. Write the document and justify every type choice. Then send it to `/api/v1/echo` and check that it comes back identical.
+
+<details>
+<summary>Solution (one of several)</summary>
+
+```json
+{
+  "number": 2026001,
+  "issued_at": "2026-09-18T09:30:00Z",
+  "total_cents": 187100,
+  "currency": "EUR",
+  "customer_id": "9007199254740993",
+  "notes": null
+}
+```
+
+- `issued_at`: an ISO 8601 string in UTC, the one convention everyone can read.
+- `total_cents`: an integer in cents + `currency`. No floats for money.
+- `customer_id`: a **string**, so JavaScript does not round it.
+- `notes`: `null` to say explicitly "there are no notes"; in a PATCH you would instead have left the key out.
+</details>
+
+## Common mistakes
+
+- Building JSON by concatenating strings → trailing commas, wrong escapes. Always use the library.
+- Passing amounts as `float` and adding them up: `0.1 + 0.2 ≠ 0.3`.
+- Sending 64-bit ids as numbers to JavaScript clients.
+- Storing dates as `"27/11/2024"`: ambiguous (11/27?) and not sortable. ISO 8601 sorts alphabetically.
+- Trusting key order or the last value of a duplicate key.
+
+## Summary
+
+JSON is deliberately minimal: no comments, dates, decimal precision or unbounded integers. You live with it through conventions (ISO 8601, cents, ids as strings) and by knowing how *your* parser behaves. From the next chapter we dive into Python's `json` module.

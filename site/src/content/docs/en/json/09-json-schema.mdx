@@ -1,0 +1,277 @@
+---
+title: "9. JSON Schema"
+description: "Describing the shape of a JSON document with JSON Schema (draft 2020-12) and validating real data with jsonschema in Python and ajv in TypeScript, even starting from the API's OpenAPI schema."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../../components/Prova.astro';
+import Curl from '../../../../components/Curl.astro';
+
+## Goals
+
+- Write a schema that describes a JSON document: types, required fields, enumerations, formats, nested objects.
+- Validate an API response with `jsonschema` (Python) and `ajv` (TypeScript) and read the errors.
+- Reuse the schemas the API already publishes in `/api/openapi.json` instead of rewriting them.
+
+## Theory
+
+In chapters 7 and 8 you validated JSON by writing types *in the language* (zod, pydantic). **JSON Schema** does the same thing but in a **language-independent** JSON document: the same file validates in Python, TypeScript, Java, Go, and you can attach it to an API's documentation. The current version is **draft 2020-12**.
+
+A schema is a JSON object with keywords:
+
+| Keyword | What it does | Example |
+|---|---|---|
+| `type` | type of the value: `object`, `array`, `string`, `number`, `integer`, `boolean`, `null` | `"type": "integer"` |
+| `properties` | schema of each key of an object | `"properties": {"id": {"type": "integer"}}` |
+| `required` | keys that must be present | `"required": ["id", "title"]` |
+| `additionalProperties` | allow (`true`) or not (`false`) keys that are not listed | `false` = "closed" schema |
+| `enum` | a value from a fixed list | `"enum": ["it", "en", "es"]` |
+| `minimum`, `maximum`, `minLength`, `pattern` | constraints on numbers and strings | `"minimum": 0` |
+| `items`, `uniqueItems` | schema of the elements of an array | `"items": {"type": "string"}` |
+| `format` | known formats: `date-time`, `email`, `uri`… (checked only if the validator supports it) | `"format": "date-time"` |
+| `$ref`, `$defs` | reuse: define once, reference everywhere | `"$ref": "#/$defs/attributi"` |
+
+The schema of the book the API returns (a subset of the fields):
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Libro",
+  "type": "object",
+  "required": ["id", "title", "price", "author_id", "in_stock"],
+  "properties": {
+    "id": { "type": "integer", "minimum": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "price": { "type": "number", "minimum": 0 },
+    "author_id": { "type": "integer" },
+    "language": { "type": "string", "enum": ["it", "en", "es"] },
+    "in_stock": { "type": "boolean" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "attributes": { "$ref": "#/$defs/attributi" }
+  },
+  "$defs": {
+    "attributi": {
+      "type": "object",
+      "properties": {
+        "format": { "enum": ["brossura", "rilegato", "tascabile"] },
+        "awards": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "ebook": { "type": "boolean" }
+      }
+    }
+  },
+  "additionalProperties": true
+}
+```
+
+`additionalProperties: true` (the default) makes the schema **open**: if the API adds a field tomorrow, validation does not break. For an *input* you receive from others, on the other hand, you will often want `false`.
+
+<Aside type="note" title="OpenAPI = JSON Schema">
+The API's Swagger documentation (`/api/docs`) is generated from an OpenAPI document; its `components.schemas` section contains real JSON Schemas for the request bodies (`BookIn`, `OrderIn`, …). You can download them and use them to validate *before* sending.
+</Aside>
+
+## curl, explained
+
+Let's download the OpenAPI document and extract the `BookIn` schema (the body of `POST /books`) with `jq`:
+
+<Curl cmd={`curl -s https://corso-api-json.giuseppebosi.com/api/openapi.json \\
+  | jq '.components.schemas.BookIn | {required, properties: (.properties | keys)}'`} spiega={[
+  ['curl -s …/api/openapi.json', 'GET of the OpenAPI document (JSON, a few tens of KB)'],
+  ['\\', "at the end of a line: continues the command on the next line (only for readability)"],
+  ['|', "<em>pipe</em>: the output of curl becomes the input of jq"],
+  ["jq '…'", "jq reads JSON and extracts/transforms parts of it; the program goes inside single quotes"],
+  ['.components.schemas.BookIn', "navigates: key <code>components</code> → <code>schemas</code> → <code>BookIn</code>"],
+  ['| {required, properties: (.properties | keys)}', "builds a new object with the <code>required</code> list and only the names of the <code>properties</code>"],
+]} />
+
+```json
+{
+  "required": ["title", "author_id", "category_id", "price"],
+  "properties": ["attributes", "author_id", "category_id", "in_stock", "isbn", "language", "pages", "price", "published_year", "tags", "title"]
+}
+```
+
+## Python and TypeScript
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx jsonschema referencing
+import httpx
+from jsonschema import Draft202012Validator, ValidationError, validate
+from referencing import Registry, Resource
+
+BASE = "https://corso-api-json.giuseppebosi.com"
+
+LIBRO_SCHEMA = {  # lo schema visto sopra
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "required": ["id", "title", "price", "author_id", "in_stock"],
+    "properties": {
+        "id": {"type": "integer", "minimum": 1},
+        "title": {"type": "string", "minLength": 1},
+        "price": {"type": "number", "minimum": 0},
+        "author_id": {"type": "integer"},
+        "language": {"type": "string", "enum": ["it", "en", "es"]},
+        "in_stock": {"type": "boolean"},
+        "created_at": {"type": "string", "format": "date-time"},
+        "attributes": {"$ref": "#/$defs/attributi"},
+    },
+    "$defs": {"attributi": {"type": "object", "properties": {
+        "format": {"enum": ["brossura", "rilegato", "tascabile"]},
+        "awards": {"type": "array", "items": {"type": "string"}, "uniqueItems": True},
+        "ebook": {"type": "boolean"}}}},
+}
+
+# 1) una risposta vera passa
+libro = httpx.get(f"{BASE}/api/v1/books/1").json()
+validate(libro, LIBRO_SCHEMA)          # solleva ValidationError se non valido
+print("libro 1 valido")
+
+# 2) un JSON rotto: tutti gli errori, non solo il primo
+rotto = {**libro, "price": "gratis", "language": "fr"}
+v = Draft202012Validator(LIBRO_SCHEMA)
+for err in sorted(v.iter_errors(rotto), key=lambda e: list(e.path)):
+    print("/".join(map(str, err.path)), "→", err.message)
+
+# 3) validare un body PRIMA di inviarlo, con lo schema preso dall'OpenAPI
+openapi = httpx.get(f"{BASE}/api/openapi.json").json()
+print("obbligatori in BookIn:", openapi["components"]["schemas"]["BookIn"]["required"])
+registro = Registry().with_resource("openapi", Resource.from_contents(
+    {"$schema": "https://json-schema.org/draft/2020-12/schema", **openapi}))
+book_in = Draft202012Validator({"$ref": "openapi#/components/schemas/BookIn"}, registry=registro)
+try:
+    book_in.validate({"title": "x", "price": -1})
+except ValidationError as e:
+    print("BookIn:", e.message)
+```
+
+Output:
+
+```
+libro 1 valido
+language → 'fr' is not one of ['it', 'en', 'es']
+price → 'gratis' is not of type 'number'
+obbligatori in BookIn: ['title', 'author_id', 'category_id', 'price']
+BookIn: -1 is less than the minimum of 0.0
+```
+
+The registry (`referencing`) is needed because OpenAPI schemas refer to each other with `$ref: "#/components/schemas/Address"`: by putting the whole document in the registry, the references resolve.
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// npm install ajv ajv-formats  ·  node --experimental-strip-types schema.ts
+import Ajv from "ajv/dist/2020.js";   // la classe per JSON Schema 2020-12 (quella base è draft-07)
+import addFormats from "ajv-formats";
+
+const BASE = "https://corso-api-json.giuseppebosi.com";
+
+const LIBRO_SCHEMA = {
+  type: "object",
+  required: ["id", "title", "price", "author_id", "in_stock"],
+  properties: {
+    id: { type: "integer", minimum: 1 },
+    title: { type: "string", minLength: 1 },
+    price: { type: "number", minimum: 0 },
+    author_id: { type: "integer" },
+    language: { enum: ["it", "en", "es"] },
+    in_stock: { type: "boolean" },
+    created_at: { type: "string", format: "date-time" },
+    attributes: { $ref: "#/$defs/attributi" },
+  },
+  $defs: { attributi: { type: "object", properties: {
+    format: { enum: ["brossura", "rilegato", "tascabile"] },
+    awards: { type: "array", items: { type: "string" }, uniqueItems: true },
+    ebook: { type: "boolean" } } } },
+};
+
+const ajv = new Ajv({ allErrors: true, strict: false });   // allErrors: tutti gli errori, non il primo
+addFormats(ajv);                            // abilita "format": "date-time", "email", ...
+const valida = ajv.compile(LIBRO_SCHEMA);   // compila una volta, riusa mille volte
+
+const libro = await (await fetch(`${BASE}/api/v1/books/1`)).json();
+console.log("valido:", valida(libro));
+
+const rotto = { ...libro, price: "gratis", language: "fr" };
+console.log("rotto:", valida(rotto), valida.errors?.map((e) => `${e.instancePath} ${e.message}`));
+
+// lo schema di BookIn dall'OpenAPI: ajv risolve i $ref interni se registri il documento.
+// `strict: false` serve qui: il documento OpenAPI contiene chiavi che JSON Schema non conosce
+// (`openapi`, `paths`, `info`...) e in modalità severa ajv si fermerebbe con "unknown keyword".
+const openapi = await (await fetch(`${BASE}/api/openapi.json`)).json();
+ajv.addSchema(openapi, "openapi");
+const validaBookIn = ajv.compile({ $ref: "openapi#/components/schemas/BookIn" });
+console.log("BookIn:", validaBookIn({ title: "x", price: -1 }), validaBookIn.errors?.map((e) => e.message));
+```
+
+Output:
+
+```
+valido: true
+rotto: false [ '/price must be number', '/language must be equal to one of the allowed values' ]
+BookIn: false [ "must have required property 'author_id'", "must have required property 'category_id'", 'must be >= 0' ]
+```
+</TabItem>
+</Tabs>
+
+<Aside type="caution" title="Why ajv and not zod here?">
+`zod` (chapter 7) is handier when the schema is *born* in TypeScript. `ajv` is for when the schema **comes from outside** as JSON Schema: a file shared with the team, an OpenAPI document, a contract between services.
+</Aside>
+
+## Try it now
+
+The OpenAPI document you just used:
+
+<Prova path="/api/openapi.json" titolo="the API's OpenAPI schema (look at components.schemas)" />
+
+And the server validating for you: the body below violates the `BookIn` schema in three places. Look at `error.details`: it is the same information a local validator would give you, but after a network round trip.
+
+<Prova method="POST" path="/api/v1/books" body={{ "title": "", "author_id": "uno", "price": -3 }} sandbox titolo="a body that violates BookIn (needs the sandbox)" />
+
+## Exercise
+
+Write the schema of an **order** (`GET /api/v1/orders/1`): `id` integer, `status` among `pending|paid|shipped|delivered|cancelled`, `total` a number ≥ 0, `shipping_address` an object with `street`, `city`, `zip` (a 5-digit string: `"pattern": "^[0-9]{5}$"`) and `country` (2 letters), `items` a **non-empty** array (`"minItems": 1`) of objects with integer `book_id` and `quantity` ≥ 1. Validate orders 1, 2 and 3.
+
+<Prova path="/api/v1/orders/2" titolo="order 2, to validate" />
+
+<details>
+<summary>Solution</summary>
+
+```json
+{
+  "type": "object",
+  "required": ["id", "status", "total", "shipping_address", "items"],
+  "properties": {
+    "id": { "type": "integer" },
+    "status": { "enum": ["pending", "paid", "shipped", "delivered", "cancelled"] },
+    "total": { "type": "number", "minimum": 0 },
+    "shipping_address": {
+      "type": "object",
+      "required": ["street", "city", "zip", "country"],
+      "properties": {
+        "street": { "type": "string" }, "city": { "type": "string" },
+        "zip": { "type": "string", "pattern": "^[0-9]{5}$" },
+        "country": { "type": "string", "minLength": 2, "maxLength": 2 }
+      }
+    },
+    "items": {
+      "type": "array", "minItems": 1,
+      "items": { "type": "object", "required": ["book_id", "quantity"],
+                 "properties": { "book_id": { "type": "integer", "minimum": 1 }, "quantity": { "type": "integer", "minimum": 1 } } }
+    }
+  }
+}
+```
+
+In Python: `for i in (1, 2, 3): validate(httpx.get(f"{BASE}/api/v1/orders/{i}").json(), SCHEMA)`. All three pass.
+</details>
+
+## Common mistakes
+
+- **`"type": "float"`** does not exist: decimal numbers are `number`, integers `integer` (and an `integer` also accepts `2.0`).
+- **`required` in the wrong place**: it goes at the same level as `properties`, not inside a single property.
+- **Forgetting `allErrors`/`iter_errors`**: by default you only see the first error and fix things by trial and error.
+- **`format` ignored**: without `ajv-formats` (TS) or without `format_checker` (Python) formats are not checked and you get no warning.
+- **A schema that is too closed on a *response***: `additionalProperties: false` on what you receive from an API will make you fail at the first new field.
+
+## Summary
+
+JSON Schema describes the shape of data in a portable document; `jsonschema`/`ajv` apply it and, with `$ref`, you can directly reuse the schemas the API publishes in OpenAPI. In the next chapter: moving around inside deep JSON documents with paths, JSONPath and jq.

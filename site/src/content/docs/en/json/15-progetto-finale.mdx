@@ -1,0 +1,262 @@
+---
+title: "15. Final project"
+description: "A complete pipeline in Python and in TypeScript: download the NDJSON export in streaming mode, validate every line, compute statistics, write a JSON report and compare it with the server's."
+---
+import { Tabs, TabItem, Aside, Steps } from '@astrojs/starlight/components';
+import Prova from '../../../../components/Prova.astro';
+import Curl from '../../../../components/Curl.astro';
+
+## Goals
+
+Put together everything you have seen in Section 1 in a program you could actually use:
+
+- **download** data in streaming mode (ch. 11);
+- **validate** every record with a typed model (ch. 7–8), discarding the broken ones;
+- **aggregate** (counts, averages, top-N) with the language's data structures;
+- **write** a readable JSON report (ch. 4–6);
+- **verify** the result against an independent source (`/api/v1/stats`).
+
+## The task
+
+From the Aurora Bookshop catalog, produce `report.json` with this shape:
+
+```json
+{
+  "books": 80,
+  "avg_price": 19.9,
+  "by_category": [ { "category": "saggistica", "books": 14, "avg_price": 17.04 }, … ],
+  "top_authors": [ { "name": "Matteo Rinaldi", "books": 8 }, … ],
+  "formats": { "tascabile": 30, "brossura": 26, "rilegato": 24 }
+}
+```
+
+Source: `GET /api/v1/export/books.ndjson` (one book per line, with `author_name` and `category` already resolved by the server). Check: `GET /api/v1/stats`, which computes the same things in SQL.
+
+<Steps>
+1. Download the export in streaming mode and, line by line, validate it with a model (`Libro`). Count the discarded lines.
+2. Accumulate the aggregates **while you read** (do not keep all the books in memory, even if here there are only 80: it is the habit that counts).
+3. Build the report and write it to a file with indentation and UTF-8.
+4. Download `/stats` and compare the average price and books per category: they must match.
+</Steps>
+
+## curl, explained
+
+The two calls the program will make, seen "bare":
+
+<Curl cmd={`curl -s https://corso-api-json.giuseppebosi.com/api/v1/export/books.ndjson | wc -l
+curl -s https://corso-api-json.giuseppebosi.com/api/v1/stats | jq '{prices, cat: .books_by_category[0:2], top: .top_authors[0:2]}'`} spiega={[
+  ['| wc -l', "counts the lines of the export: 80, that is the records, without parsing"],
+  ["jq '{prices, cat: .books_by_category[0:2], top: .top_authors[0:2]}'", "extracts the three pieces the report must reproduce; <code>[0:2]</code> is a <em>slice</em>: the first two elements"],
+]} />
+
+```
+80
+{
+  "prices": { "min": 7.13, "avg": 19.9, "max": 34.49 },
+  "cat": [ { "slug": "saggistica", "name": "Saggistica", "books": 14, "avg_price": 17.04 }, { "slug": "ragazzi", "name": "Ragazzi", "books": 12, "avg_price": 16.72 } ],
+  "top": [ { "id": 18, "name": "Matteo Rinaldi", "books": 8, "avg_rating": 4.22 }, { "id": 1, "name": "Elena Marchetti", "books": 6, "avg_rating": 3.12 } ]
+}
+```
+
+## Python and TypeScript
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+"""Progetto finale: da NDJSON a report.  pip install httpx pydantic  ·  python progetto.py [report.json]"""
+import json, sys
+from collections import Counter, defaultdict
+import httpx
+from pydantic import BaseModel, Field, ValidationError
+
+BASE = "https://corso-api-json.giuseppebosi.com"
+
+
+class Libro(BaseModel):            # il contratto: ciò che DEVE esserci per contare il libro
+    id: int
+    title: str = Field(min_length=1)
+    price: float = Field(ge=0)
+    author_name: str
+    category: str
+    in_stock: bool
+    attributes: dict
+
+
+def scarica() -> list[Libro]:
+    libri, scartati = [], 0
+    with httpx.stream("GET", f"{BASE}/api/v1/export/books.ndjson", timeout=30) as r:
+        r.raise_for_status()
+        for riga in r.iter_lines():
+            if not riga:
+                continue
+            try:
+                libri.append(Libro.model_validate_json(riga))   # parsing + validazione in un colpo
+            except ValidationError as e:
+                scartati += 1
+                print("riga scartata:", e.errors()[0]["msg"], file=sys.stderr)
+    print(f"letti {len(libri)} libri, scartati {scartati}", file=sys.stderr)
+    return libri
+
+
+def report(libri: list[Libro]) -> dict:
+    per_cat = defaultdict(list)
+    for l in libri:
+        per_cat[l.category].append(l.price)
+    autori = Counter(l.author_name for l in libri)
+    return {
+        "books": len(libri),
+        "avg_price": round(sum(l.price for l in libri) / len(libri), 2),
+        "by_category": sorted(
+            [{"category": c, "books": len(p), "avg_price": round(sum(p) / len(p), 2)} for c, p in per_cat.items()],
+            key=lambda x: -x["books"]),
+        "top_authors": [{"name": n, "books": k} for n, k in autori.most_common(3)],
+        "formats": dict(Counter(l.attributes.get("format", "n/d") for l in libri)),
+    }
+
+
+def confronta(mio: dict) -> None:
+    ufficiale = httpx.get(f"{BASE}/api/v1/stats").json()
+    print("prezzo medio: mio", mio["avg_price"], "| server", ufficiale["prices"]["avg"], file=sys.stderr)
+    miei = {c["category"]: c["books"] for c in mio["by_category"]}
+    loro = {c["slug"]: c["books"] for c in ufficiale["books_by_category"]}
+    print("categorie uguali:", miei == loro, file=sys.stderr)
+
+
+if __name__ == "__main__":
+    libri = scarica()
+    r = report(libri)
+    confronta(r)
+    destinazione = sys.argv[1] if len(sys.argv) > 1 else "report.json"
+    with open(destinazione, "w", encoding="utf-8") as f:
+        json.dump(r, f, indent=2, ensure_ascii=False)
+    print("scritto", destinazione, file=sys.stderr)
+```
+
+Output on stderr (the report goes to a file, so `python progetto.py > altro` does not mix them):
+
+```
+letti 80 libri, scartati 0
+prezzo medio: mio 19.9 | server 19.9
+categorie uguali: True
+scritto report.json
+```
+
+Choices worth noticing: `model_validate_json` parses and validates in one go (faster than `json.loads` + `model_validate`); the `libri` list is kept only for clarity — for a huge export you would pass the data to `report()` as you read; `ensure_ascii=False` keeps accented letters readable in the file.
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// Progetto finale: da NDJSON a report.  npm install zod  ·  node --experimental-strip-types progetto.ts [report.json]
+import * as readline from "node:readline";
+import { Readable } from "node:stream";
+import { writeFile } from "node:fs/promises";
+import { z } from "zod";
+
+const BASE = "https://corso-api-json.giuseppebosi.com";
+
+const Libro = z.object({            // il contratto
+  id: z.number().int(),
+  title: z.string().min(1),
+  price: z.number().nonnegative(),
+  author_name: z.string(),
+  category: z.string(),
+  in_stock: z.boolean(),
+  attributes: z.record(z.string(), z.unknown()),
+});
+type Libro = z.infer<typeof Libro>;  // il tipo TS deriva dallo schema: una sola fonte di verità
+
+async function scarica(): Promise<Libro[]> {
+  const r = await fetch(`${BASE}/api/v1/export/books.ndjson`);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const libri: Libro[] = [];
+  let scartati = 0;
+  for await (const riga of readline.createInterface({ input: Readable.fromWeb(r.body as any) })) {
+    if (!riga) continue;
+    const esito = Libro.safeParse(JSON.parse(riga));     // safeParse: niente eccezioni, un esito
+    if (esito.success) libri.push(esito.data);
+    else { scartati++; console.error("riga scartata:", esito.error.issues[0].message); }
+  }
+  console.error(`letti ${libri.length} libri, scartati ${scartati}`);
+  return libri;
+}
+
+function report(libri: Libro[]) {
+  const perCat = new Map<string, number[]>();
+  const autori = new Map<string, number>();
+  const formati: Record<string, number> = {};
+  for (const l of libri) {
+    perCat.set(l.category, [...(perCat.get(l.category) ?? []), l.price]);
+    autori.set(l.author_name, (autori.get(l.author_name) ?? 0) + 1);
+    const f = String(l.attributes.format ?? "n/d");
+    formati[f] = (formati[f] ?? 0) + 1;
+  }
+  const media = (p: number[]) => Math.round((p.reduce((a, b) => a + b, 0) / p.length) * 100) / 100;
+  return {
+    books: libri.length,
+    avg_price: media(libri.map((l) => l.price)),
+    by_category: [...perCat].map(([category, p]) => ({ category, books: p.length, avg_price: media(p) })).sort((a, b) => b.books - a.books),
+    top_authors: [...autori].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, books]) => ({ name, books })),
+    formats: formati,
+  };
+}
+
+async function confronta(mio: ReturnType<typeof report>) {
+  const ufficiale = await (await fetch(`${BASE}/api/v1/stats`)).json();
+  console.error("prezzo medio: mio", mio.avg_price, "| server", ufficiale.prices.avg);
+  const loro: Record<string, number> = Object.fromEntries(ufficiale.books_by_category.map((c: any) => [c.slug, c.books]));
+  const miei: Record<string, number> = Object.fromEntries(mio.by_category.map((c) => [c.category, c.books]));
+  console.error("categorie uguali:", Object.keys(loro).every((k) => loro[k] === miei[k]));
+}
+
+const libri = await scarica();
+const r = report(libri);
+await confronta(r);
+const destinazione = process.argv[2] ?? "report.json";
+await writeFile(destinazione, JSON.stringify(r, null, 2) + "\n", "utf-8");
+console.error("scritto", destinazione);
+```
+
+Output:
+
+```
+letti 80 libri, scartati 0
+prezzo medio: mio 19.9 | server 19.9
+categorie uguali: true
+scritto report.json
+```
+
+Choices worth noticing: `z.infer` saves you from writing the shape of the book twice; a `Map` instead of an object for the accumulators (arbitrary keys, ordered iteration); `JSON.stringify(r, null, 2)` for a readable file.
+</TabItem>
+</Tabs>
+
+<Aside type="tip" title="You have finished Section 1">
+You can read, write, validate, navigate, transmit and store JSON in both languages. In Section 2 the point of view turns around: no longer "what is in this JSON" but "how do I ask a database for it through an API", from the first `GET` to queries across several tables.
+</Aside>
+
+## Try it now
+
+<Prova path="/api/v1/stats" titolo="the official numbers to compare your report with" />
+
+## Extension exercises
+
+1. **Robustness**: simulate a corrupted line (edit a local copy of the export: remove a comma, put `"price": "n/d"`) and check that the program discards it without stopping.
+2. **Top authors with ties**: the server sorts authors with the same number of books by name. Do the same in your report and compare `top_authors` too.
+3. **A second report**: `ordini.json` from `GET /api/v1/orders?limit=100` (paginated: follow `links.next` until it is `null`) with revenue by status and by city (`shipping_address.city`), to compare with `/api/v1/stats` (`orders_by_status`) and `/api/v1/stats/sales?group_by=city`.
+
+<details>
+<summary>Hints</summary>
+
+1. Save the export with `curl -o libri.ndjson`, edit it, and have the program read the file (`open("libri.ndjson")` / `createReadStream`): the rest of the code does not change — that is the benefit of having separated reading from validation.
+2. Python: `sorted(autori.items(), key=lambda x: (-x[1], x[0]))[:3]`. TS: `.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))`.
+3. A loop `while url: r = get(url); …; url = r["links"]["next"]`. Revenue by status: the sum of `total` grouped by `status`, excluding `cancelled` if you want to match `/stats/sales`.
+</details>
+
+## Common mistakes
+
+- **Validating after aggregating**: a broken line ends up in the totals before you notice. Validate at the boundary, right away.
+- **Rounding halfway through**: round only in the final report; use full numbers in the intermediate sums.
+- **Printing the report on stdout together with the logs**: use `stderr` for messages and a file/stdout for data.
+- **`sum(p) / len(p)` with an empty `p`**: division by zero; it does not happen here, but in a real dataset it does.
+
+## Summary
+
+Download in streaming mode, validate at the boundary, aggregate while you read, write readable UTF-8, verify against an independent source. Next step: [Section 2, chapter 1 — HTTP and REST](/en/db-api/01-http-e-rest/).

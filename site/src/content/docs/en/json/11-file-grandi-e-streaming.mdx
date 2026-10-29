@@ -1,0 +1,188 @@
+---
+title: "11. Large files and streaming"
+description: "When JSON does not fit in memory: JSON Lines (NDJSON), streaming reads with httpx and fetch, incremental parsers (ijson), and how to write exports that scale."
+---
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Prova from '../../../../components/Prova.astro';
+import Curl from '../../../../components/Curl.astro';
+
+## Goals
+
+- Understand why a "classic" 2 GB JSON file is a problem, and what changes with **JSON Lines**.
+- Read an HTTP response line by line without loading all of it (`httpx.stream`, `for await` in Node).
+- Use an incremental parser (`ijson`) on a giant JSON array.
+- Know which format to pick when you are the one producing the data.
+
+## Theory
+
+`json.loads` / `JSON.parse` do two expensive things: they read **all** the text into memory and build the **whole** tree of objects. For a 50 MB file that is fine; for a 5 GB log it is not, and it is not needed: almost always you want to process one element at a time.
+
+### JSON Lines (NDJSON)
+
+The most widely used solution is to produce not *one* document but **one document per line**:
+
+```
+{"id": 1, "title": "Il silenzio di Ustica", "price": 18.71}
+{"id": 2, "title": "TypeScript e Ferrara", "price": 9.76}
+{"id": 3, "title": "Il cervello e Matera", "price": 31.16}
+```
+
+Rules (jsonlines.org): UTF-8 encoding, one JSON value per line, `\n` separator, no commas between lines, no `[` `]` around them. Media type: `application/x-ndjson` (or `application/jsonl`). Extensions: `.ndjson`, `.jsonl`.
+
+Advantages: it is read line by line with constant memory; you can **append** (`>>`) without rewriting the file; if a line is corrupted you only lose that one; `grep`, `head`, `split` work. Drawback: it is not valid JSON as a whole (`jq .` accepts it anyway, one element at a time).
+
+### HTTP streaming
+
+The server can start sending the response before it has generated all of it (`Transfer-Encoding: chunked`). The client, if it reads in streaming mode, processes the first records while the last ones are still on their way. This is how `GET /api/v1/export/books.ndjson` works.
+
+### Incremental parsers
+
+If the file is a classic JSON array and you cannot change it, an **incremental** (SAX-like) parser emits the elements as it meets them: `ijson` in Python, `stream-json` in Node.
+
+## curl, explained
+
+<Curl cmd={`curl -s -D - https://corso-api-json.giuseppebosi.com/api/v1/export/books.ndjson -o libri.ndjson
+head -n 2 libri.ndjson | cut -c 1-120
+wc -l libri.ndjson`} spiega={[
+  ['-D -', "<em>dump headers</em>: writes the response headers to stdout (<code>-</code>), separate from the body"],
+  ['-o libri.ndjson', "<em>output</em>: saves the body to the file instead of printing it"],
+  ['head -n 2', "first 2 lines = first 2 books, because one record = one line"],
+  ['cut -c 1-120', "cuts each line to its first 120 characters, just for readability here"],
+  ['wc -l', "counts the lines: 80 books, without any parsing"],
+]} />
+
+```
+HTTP/1.1 200 OK
+content-type: application/x-ndjson
+content-disposition: attachment; filename="books.ndjson"
+transfer-encoding: chunked
+
+{"id": 1, "title": "Il silenzio di Ustica", "isbn": "978-88-81482-001-1", "author_id": 19, "category_id": 2, "price": 18.71, …
+{"id": 2, "title": "TypeScript e Ferrara", "isbn": "978-88-30379-002-3", "author_id": 11, "category_id": 9, "price": 9.76, …
+80 libri.ndjson
+```
+
+Note `transfer-encoding: chunked` and the missing `content-length`: the server did not know in advance how long the response would be, so it sent it in pieces.
+
+## Python and TypeScript
+
+<Tabs syncKey="lang">
+<TabItem label="Python">
+```python
+# pip install httpx ijson
+import io, json
+import httpx, ijson
+
+BASE = "https://corso-api-json.giuseppebosi.com/api/v1"
+
+# 1) NDJSON in streaming: memoria costante, un libro alla volta
+tot, n = 0.0, 0
+with httpx.stream("GET", f"{BASE}/export/books.ndjson") as r:
+    r.raise_for_status()
+    for riga in r.iter_lines():      # arriva riga per riga, mentre il server sta ancora inviando
+        if not riga:
+            continue                  # riga vuota finale
+        libro = json.loads(riga)
+        n += 1
+        tot += libro["price"]
+print(n, round(tot / n, 2))          # 80 19.9
+
+# 2) un array JSON classico letto in modo incrementale con ijson
+r = httpx.get(f"{BASE}/books", params={"limit": 100})
+for i, libro in enumerate(ijson.items(io.BytesIO(r.content), "items.item")):
+    if i < 2:
+        print(libro["title"], libro["price"])
+# Il silenzio di Ustica 18.71
+# TypeScript e Ferrara 9.76
+
+# 3) scrivere NDJSON: una riga per record, append-friendly
+with open("economici.ndjson", "a", encoding="utf-8") as f:
+    with httpx.stream("GET", f"{BASE}/export/books.ndjson") as r:
+        for riga in r.iter_lines():
+            if riga and json.loads(riga)["price"] < 10:
+                f.write(riga + "\n")
+```
+
+`"items.item"` is the ijson *prefix*: "the elements (`item`) of the array under the `items` key". With a file on disk you use `ijson.items(open("grande.json", "rb"), "item")` for an array at the root. Note that `ijson` returns decimals as `Decimal` (exact precision): use `float(x)` if you need a float.
+</TabItem>
+<TabItem label="TypeScript">
+```ts
+// node --experimental-strip-types stream.ts
+import * as readline from "node:readline";
+import { Readable } from "node:stream";
+import { createWriteStream } from "node:fs";
+
+const BASE = "https://corso-api-json.giuseppebosi.com/api/v1";
+
+// 1) NDJSON in streaming: r.body è un ReadableStream web; readline lo spezza in righe
+const r = await fetch(`${BASE}/export/books.ndjson`);
+if (!r.ok) throw new Error(`HTTP ${r.status}`);
+const righe = readline.createInterface({ input: Readable.fromWeb(r.body as any) });
+let n = 0, tot = 0;
+for await (const riga of righe) {
+  if (!riga) continue;
+  const libro = JSON.parse(riga);
+  n++; tot += libro.price;
+}
+console.log(n, (tot / n).toFixed(2));   // 80 19.90
+
+// 2) scrivere NDJSON in append, riga per riga
+const out = createWriteStream("economici.ndjson", { flags: "a" });
+const r2 = await fetch(`${BASE}/export/books.ndjson`);
+for await (const riga of readline.createInterface({ input: Readable.fromWeb(r2.body as any) })) {
+  if (riga && JSON.parse(riga).price < 10) out.write(riga + "\n");
+}
+out.end();
+```
+
+For a classic JSON array that is too large: `npm install stream-json` and `chain([fs.createReadStream("grande.json"), parser(), streamArray()])` emits one event per element. Alternatively, if the file is yours, convert it to NDJSON once.
+</TabItem>
+</Tabs>
+
+<Aside type="tip" title="Which format to produce?">
+A single object or a short list (an API response, a configuration) → classic JSON. Logs, exports, datasets, event queues, anything that grows → **JSON Lines**. If the volume then becomes huge and you only need some columns, the next step is Parquet, but that is another course.
+</Aside>
+
+## Try it now
+
+The browser downloads everything and then shows it, so here you do not see the streaming "live", but you do see the format: one line per book, no array around them.
+
+<Prova path="/api/v1/export/books.ndjson" titolo="80 books in JSON Lines" />
+
+<Prova path="/api/v1/export/books.csv" titolo="the same export in CSV, for comparison" />
+
+## Exercise
+
+Write a script that reads `books.ndjson` in streaming mode and produces `per_categoria.ndjson`: **one line per category** with `{"category": ..., "books": N, "max_price": X}`. It must work even if the export had 10 million lines (so: keep only the per-category aggregate in memory, never the books).
+
+<details>
+<summary>Solution (Python)</summary>
+
+```python
+import json, httpx
+agg = {}   # una voce per categoria: memoria proporzionale alle categorie, non ai libri
+with httpx.stream("GET", "https://corso-api-json.giuseppebosi.com/api/v1/export/books.ndjson") as r:
+    for riga in r.iter_lines():
+        if not riga: continue
+        b = json.loads(riga)
+        a = agg.setdefault(b["category"], {"category": b["category"], "books": 0, "max_price": 0})
+        a["books"] += 1
+        a["max_price"] = max(a["max_price"], b["price"])
+with open("per_categoria.ndjson", "w", encoding="utf-8") as f:
+    for a in agg.values():
+        f.write(json.dumps(a, ensure_ascii=False) + "\n")
+```
+
+Result: 10 lines, for example `{"category": "gialli", "books": 4, "max_price": 21.77}`.
+</details>
+
+## Common mistakes
+
+- **`r.json()` on an NDJSON response** → `JSONDecodeError: Extra data`: it is not *one* JSON document, it is many.
+- **`for riga in r.text.splitlines()`** works but has already downloaded everything: real streaming is `iter_lines()` / `for await`.
+- **Empty or truncated lines** (a file being written, last line without `\n`): skip the empty ones and handle `JSONDecodeError` on the last one.
+- **Collecting all the records in a list** "to process them later": exactly what streaming was meant to avoid.
+
+## Summary
+
+JSON Lines + line-by-line reading = constant memory and composable pipelines; `ijson`/`stream-json` save the day when the file is a classic array. Next chapter: how much parsing really costs, and when a faster library is worth it.
