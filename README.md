@@ -1,9 +1,11 @@
 **English** · [Italiano](README.it.md)
 
-# JSON & API Course — from zero to expert
+# JSON & REST API course: from zero to expert, with a live test API
 
-A free, Italian-language course on **JSON** (Python and TypeScript/JavaScript) and on **querying
-databases through HTTP APIs**, together with the **live test API** every example runs against.
+**A free JSON tutorial and REST API course (Python, TypeScript, curl) where every example runs
+against a real, live API** — learn JSON parsing and validation, then query a SQL database over
+HTTP: filters, pagination, foreign keys, JOINs, auth, full-text search. The course text is in
+Italian; code, commands and the API are in English.
 
 **Live demo:** https://corso-api-json.giuseppebosi.com
 (the test API is at `/api/v1`, interactive docs at `/api/docs`; it sleeps when unused and is

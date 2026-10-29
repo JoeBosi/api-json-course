@@ -1,8 +1,9 @@
 [English](README.md) · **Italiano**
 
-# Corso JSON & API — da 0 a esperto
+# Corso JSON e API REST: da 0 a esperto, con un'API di prova vera
 
-Corso gratuito su **JSON** (Python e TypeScript/JavaScript) e sull'**interrogazione di database
+**Tutorial JSON e corso di API REST gratuito (Python, TypeScript, curl) in cui ogni esempio gira
+contro un'API reale.** Corso gratuito su **JSON** (Python e TypeScript/JavaScript) e sull'**interrogazione di database
 tramite API HTTP**, insieme al **server API di prova** su cui girano tutti gli esempi.
 
 **Sito:** https://corso-api-json.giuseppebosi.com
