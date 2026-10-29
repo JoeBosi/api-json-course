@@ -1,0 +1,67 @@
+---
+title: Credits and licenses
+description: Who wrote the course, under which license you can reuse it, which tools it uses and why the trademarks mentioned have nothing to do with us.
+---
+
+## Who
+
+Course written by **Prof. Giuseppe Bosi** ([www.giuseppebosi.com](https://www.giuseppebosi.com/en/)). For reports, errors or questions:
+[info@giuseppebosi.com](mailto:info@giuseppebosi.com). Corrections are welcome: a technical
+course ages, and whoever finds a mistake does everyone a favor.
+
+The date of the last update of each page is at the bottom of the page itself. The course is
+written in Italian and translated into English; code, commands and outputs are the same in both
+versions. Read-aloud is available on the Italian pages and uses your browser's speech synthesis:
+the voice is your device's.
+
+## License
+
+- **Texts, explanations, exercises**: [Creative Commons Attribution 4.0 International
+   (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/). You can copy, adapt and use
+   them, even commercially, **crediting the author** and stating whether you made changes.
+- **Code**: every code fragment of the course, the test server and the site code are released
+   under the **MIT** license: do what you like with them, keeping the copyright notice.
+- The Aurora Bookshop **dataset** is made up: names, emails and orders belong to nobody. It is
+   MIT too.
+
+The full text of the two licenses is in the project's `LICENSE` (MIT, code) and
+`LICENSE-CONTENUTI` (CC BY 4.0, texts) files.
+
+## Tools used
+
+| Tool | What it does here | License |
+|---|---|---|
+| [Astro](https://astro.build) + [Starlight](https://starlight.astro.build) | the site and its structure | MIT |
+| [Pagefind](https://pagefind.app) | the site search, with no external services | MIT |
+| [FastAPI](https://fastapi.tiangolo.com) and [Pydantic](https://docs.pydantic.dev) | the test server and validation | MIT |
+| [SQLite](https://sqlite.org) (with FTS5) | the dataset's database | public domain |
+| [slowapi](https://github.com/laurentS/slowapi) | the per-minute request limit | MIT |
+| [Swagger UI](https://swagger.io/tools/swagger-ui/) | the `/api/docs` page (served by the site, not by a CDN) | Apache 2.0 |
+| [uvicorn](https://www.uvicorn.org) | runs the server | BSD 3-clause |
+
+## Trademarks: we are not affiliated with anyone
+
+The course explains other people's tools and names them for what they are. **This course is not
+affiliated with, sponsored, endorsed or reviewed by** any of the organizations that maintain
+them. Every name and trademark belongs to its owner:
+
+- **Python** — Python Software Foundation
+- **JavaScript** — Oracle Corporation
+- **TypeScript** and **Visual Studio Code** — Microsoft Corporation
+- **Node.js** and **npm** — OpenJS Foundation
+- **curl** — Daniel Stenberg and the curl project
+- **jq** — the jq project
+- **SQLite** — SQLite Consortium
+- **FastAPI**, **Pydantic**, **Astro**, **Starlight**, **ajv**, **zod** — their respective authors and projects
+- **GitHub** — GitHub, Inc. (Microsoft)
+
+Names, commands and error messages are quoted to explain how those tools work: a legitimate
+use for teaching and reference purposes.
+
+## The test server
+
+`/api/v1` is a **teaching server**, not a service: the data is made up, the private copies
+(sandboxes) expire after a few hours, there is a per-minute request limit, and the API stays
+**off when nobody uses it** (you switch it on from [Switch on the test API](/en/api-attiva/)).
+It must not be used as the backend of anything else, and it may change or disappear without
+notice.

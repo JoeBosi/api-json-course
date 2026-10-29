@@ -3,7 +3,7 @@ title: "Tutti gli endpoint"
 description: "Tabella completa dell'API di prova: metodo, percorso, cosa fa, se serve la sandbox, in quale capitolo è spiegato."
 ---
 
-Base URL: `https://corso-api-json.giuseppebosi.com/api/v1`. Documentazione interattiva generata da OpenAPI: [Swagger UI](/api/docs) e [ReDoc](/api/redoc); lo schema è scaricabile da `/api/openapi.json`.
+Base URL: `https://corso-api-json.giuseppebosi.com/api/v1`. Documentazione interattiva generata da OpenAPI: [Swagger UI](/api/docs); lo schema è scaricabile da `/api/openapi.json`.
 
 **Sandbox**: gli endpoint marcati ✍️ richiedono `Authorization: Bearer <token>` (token da `POST /sandbox`). Gli altri funzionano anche senza token, sul dataset pubblico; con il token leggono la tua copia.
 
@@ -81,4 +81,5 @@ Base URL: `https://corso-api-json.giuseppebosi.com/api/v1`. Documentazione inter
 | `Location` | 201 di `POST /books`, `POST /orders` | URL della risorsa creata |
 | `Retry-After` | 429 | secondi da attendere |
 | `Access-Control-*` | tutte | CORS aperto (cap. 15) |
-| `Content-Encoding`, `Strict-Transport-Security`, … | solo in produzione | aggiunti dal reverse proxy (Caddy) |
+| `Content-Encoding` | risposte compresse | `gzip` dall'API, o `zstd` da Caddy in produzione (cap. 14) |
+| `Strict-Transport-Security`, `X-Frame-Options`, … | solo in produzione | aggiunti dal reverse proxy (Caddy) |

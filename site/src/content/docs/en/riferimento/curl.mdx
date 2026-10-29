@@ -1,0 +1,103 @@
+---
+title: "curl cheatsheet"
+description: "Every curl option used in the course, with one example each, plus the write-out variables and the shell tricks (quotes, variables, here-documents, pipes)."
+---
+
+`curl` makes an HTTP request and prints the response. With no options: `GET` method, body on standard output. [Chapter 2 of Section 2](/en/db-api/02-curl-dalla-a-alla-z/) explains it from scratch; this page is the reminder.
+
+## Options used in the course
+
+| Option | Meaning | Example |
+|---|---|---|
+| `-s` | *silent*: no progress bar | `curl -s URL` |
+| `-i` | *include*: also prints status and response headers | `curl -s -i URL` |
+| `-I` | headers only (`HEAD` request): on the site pages, **not** on the API (`/api/v1/*` answers 405) | `curl -s -I URL` |
+| `-D -` | *dump-header*: headers on stdout (with `-o /dev/null` to hide the body) | `curl -s -D - -o /dev/null URL` |
+| `-o FILE` | writes the body to a file (`/dev/null` = throw away) | `curl -s -o libri.json URL` |
+| `-X METHOD` | HTTP method (`POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`) | `curl -s -X DELETE URL` |
+| `-H 'Name: value'` | adds a header (repeatable) | `-H 'Content-Type: application/json'` |
+| `-H "Authorization: Bearer $TOKEN"` | the token: double quotes because the shell must substitute the variable | |
+| `-d 'DATA'` | request body (implies `POST` if there is no `-X`) | `-d '{"title": "x"}'` |
+| `-d @file.json` | body read from a file | `-d @ordine.json` |
+| `-d @-` | body read from standard input (with a here-document or a pipe) | `curl … -d @- <<'EOF' … EOF` |
+| `-G` | sends the `-d` values as the query string of a GET | `curl -G -d 'q=trieste' URL` |
+| `--data-urlencode 'k=v'` | like `-d` but encodes spaces and special characters | `--data-urlencode 'q=porto vecchio'` |
+| `-w 'FORMAT'` | *write-out*: prints variables after the response | `-w '%{http_code}\n'` |
+| `--compressed` | asks for and decompresses gzip/zstd | |
+| `--connect-timeout N` / `--max-time N` | connection / total timeout (seconds) | `--max-time 15` |
+| `--retry N` / `--retry-delay S` | retries on transient errors | `--retry 3 --retry-delay 1` |
+| `-L` | follows redirects (`3xx`) | `curl -sL URL` |
+| `-v` | *verbose*: shows the full request and response (TLS handshake included) | `curl -v URL 2>&1 \| less` |
+| `-u user:pass` | Basic auth (not used by the test server) | |
+
+## `-w` (write-out) variables
+
+| Variable | What it prints |
+|---|---|
+| `%{http_code}` | status code |
+| `%{size_download}` | body bytes received |
+| `%{time_total}` | total time in seconds |
+| `%{time_connect}`, `%{time_appconnect}` | time for TCP, for TLS |
+| `%{num_retries}` | extra attempts made |
+| `%{http_version}` | negotiated HTTP version |
+| `%{redirect_url}` | where a redirect would send you |
+| `%header{name}` | value of a response header (curl ≥ 7.84) |
+
+Example: `curl -s -o /dev/null -w 'status=%{http_code} byte=%{size_download} tempo=%{time_total}s\n' URL`.
+
+## Shell: the tricks that show up in the examples
+
+| What | Why |
+|---|---|
+| `'…'` around the URL | otherwise `&` in the query string sends the command to the background; `?` and `*` could expand |
+| `'…'` around the JSON | inside single quotes, double quotes are ordinary characters |
+| `"…$VAR…"` | the shell substitutes `$VAR` only inside double quotes (or with no quotes) |
+| `'"'"'` | a single quote inside a single-quoted string: close, open double, quote, close double, reopen |
+| `\` at the end of a line | continuation: the command goes on to the next line (no space after the backslash) |
+| `TOKEN=$(command)` | command substitution: the output goes into the variable |
+| `cmd1 \| cmd2` | pipe: the output of the first is the input of the second (`\| python3 -m json.tool`, `\| jq .`) |
+| `<<'EOF' … EOF` | here-document: multi-line text on standard input; the quotes around `EOF` block the expansion of `$` |
+| `for i in $(seq 1 10); do …; done` | loop |
+| `2>&1` | also sends standard error into the pipe (useful with `-v`) |
+
+## Ready-made recipes
+
+```bash
+BASE=https://corso-api-json.giuseppebosi.com/api/v1
+
+# token sandbox in una variabile
+TOKEN=$(curl -s -X POST $BASE/sandbox | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])')
+AUTH="Authorization: Bearer $TOKEN"
+
+# GET con query string, risposta formattata
+curl -s "$BASE/books?category=gialli&sort=-price&limit=5" | python3 -m json.tool
+
+# solo lo status
+curl -s -o /dev/null -w '%{http_code}\n' $BASE/books/9999
+
+# solo gli header
+curl -s -D - -o /dev/null $BASE/books/7
+
+# POST JSON con token
+curl -s -X POST $BASE/books -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"title": "Nuovo", "author_id": 1, "category_id": 2, "price": 9.9}'
+
+# PATCH, DELETE
+curl -s -X PATCH $BASE/books/81 -H "$AUTH" -H 'Content-Type: application/json' -d '{"price": 12}'
+curl -s -o /dev/null -w '%{http_code}\n' -X DELETE $BASE/books/81 -H "$AUTH"
+
+# SQL lungo da here-document
+curl -s -X POST $BASE/sql -H 'Content-Type: application/json' -d @- <<'EOF'
+{"sql": "SELECT a.name, COUNT(*) AS n FROM books b JOIN authors a ON a.id = b.author_id GROUP BY a.id ORDER BY n DESC LIMIT 3"}
+EOF
+
+# richiesta condizionale
+ETAG=$(curl -s -D - -o /dev/null $BASE/books/7 | grep -i '^etag' | cut -d' ' -f2 | tr -d '\r')
+curl -s -o /dev/null -w '%{http_code}\n' $BASE/books/7 -H "If-None-Match: $ETAG"     # 304
+
+# robusto: timeout e retry
+curl -s --connect-timeout 5 --max-time 15 --retry 3 --retry-delay 1 $BASE/health
+
+# pulizia
+curl -s -o /dev/null -w '%{http_code}\n' -X DELETE $BASE/sandbox -H "$AUTH"           # 204
+```

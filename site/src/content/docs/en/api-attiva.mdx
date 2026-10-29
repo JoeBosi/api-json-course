@@ -1,0 +1,58 @@
+---
+title: Switch on the test API
+description: The course's test API is off when nobody uses it. Here you switch it on with the password.
+---
+
+import AttivaApi from '../../../components/AttivaApi.astro';
+
+The course is free and open to everyone. The **test server** the examples run on
+(`/api/v1`, Swagger at `/api/docs`, the sandboxes), on the other hand, **stays off when nobody
+uses it**: it is a service that writes to disk and accepts queries, and leaving it open day and
+night to anyone makes no sense.
+
+<AttivaApi />
+
+## How it works
+
+- With the API off every call answers **503** with a message pointing to this page:
+   the chapters can still be read, but the «Try it» widgets and the `curl` examples do not answer.
+- Once on, it stays active as long as it is used, and **switches itself off after an hour**
+   without calls. There is no need to switch it off by hand.
+- Whoever has the password can switch it on again whenever they like. Wrong attempts are limited
+   (five every quarter of an hour per address), so that nobody can guess it by trial and error.
+
+:::note[No password?]
+The password is only needed to **switch on** the test server, not to read the course: all the
+chapters, examples and explanations are freely accessible. If you are following the course and
+need the server on, write to the author (the contact is at the bottom of the page).
+:::
+
+## Checking the status from the command line
+
+The status is public and can be read without a password:
+
+```bash
+curl -s https://corso-api-json.giuseppebosi.com/api/v1/interruttore
+```
+
+```json
+{ "attiva": false, "spegnimento_tra_s": 0, "minuti_di_inattivita": 60, "configurata": true }
+```
+
+(`attiva` = on, `spegnimento_tra_s` = seconds until it switches off, `minuti_di_inattivita` =
+idle minutes before switching off, `configurata` = configured.)
+
+And this is what the API answers when it is off:
+
+```json
+{
+   "error": {
+    "code": "api_spenta",
+    "message": "API di prova spenta: attivala da https://corso-api-json.giuseppebosi.com/api-attiva/",
+    "details": {
+      "attiva_da": "https://corso-api-json.giuseppebosi.com/api-attiva/",
+      "stato": "/api/v1/interruttore"
+    }
+   }
+}
+```

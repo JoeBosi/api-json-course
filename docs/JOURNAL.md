@@ -61,3 +61,18 @@ link agli altri corsi pubblici (corso-rag, corso-llamacpp).
 
 ## 29/10/2026 — LinkedIn dell autore
 Indirizzo definitivo https://www.linkedin.com/in/giuseppebosi (dal Controller): nel piè di pagina, in JSON-LD (`sameAs`) e in llms.txt. Il vecchio indirizzo non era mai stato usato qui.
+
+## 29/10/2026 — Corso bilingue (italiano + inglese sotto /en/)
+Richiesta di Giuseppe. i18n nativo di Starlight: `root` = italiano (URL invariati), `en` in
+`site/src/content/docs/en/` con gli stessi slug (`/en/json/01-cos-e-json/`), così hreflang e
+selettore di lingua collegano le pagine gemelle. Glossario in `docs/glossary-en.md`. Traduzione
+fatta in chat; codice, comandi e output sono copiati identici dalle pagine italiane dallo script
+`site/scripts/traduci.py` (si ferma se un blocco manca o è in più). Componenti bilingui tramite
+`site/src/lib/i18n.ts`; nella barra un link IT/EN sempre visibile, anche su telefono. La lettura
+audio resta solo in italiano (`estrai.py` salta `docs/en/`, il lettore non compare sulle pagine
+inglesi). SEO: hreflang it/en/x-default (Starlight), `sitemap.xml` con le due lingue e le
+alternative, `llms.txt` con sezione inglese, `llms-full-en.txt`. Controllo link:
+`site/tests/link-en.py`. Durante la revisione corretti in italiano: limite pubblico 30/min (non
+120), esempio del 429 rifatto davvero con il limite reale, link morto a ReDoc, due frasi "è stato
+eseguito". Link a GitHub nel piè di pagina pronto ma spento (`GITHUB_PUBBLICO=false`) finché il
+repo è privato.

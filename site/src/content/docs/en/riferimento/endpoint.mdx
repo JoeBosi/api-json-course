@@ -1,0 +1,85 @@
+---
+title: "All endpoints"
+description: "Complete table of the test API: method, path, what it does, whether it needs the sandbox, which chapter explains it."
+---
+
+Base URL: `https://corso-api-json.giuseppebosi.com/api/v1`. Interactive documentation generated from OpenAPI: [Swagger UI](/api/docs); the schema can be downloaded from `/api/openapi.json`.
+
+**Sandbox**: the endpoints marked ✍️ require `Authorization: Bearer <token>` (token from `POST /sandbox`). The others also work without a token, on the public dataset; with the token they read your copy.
+
+**Limit**: 30 requests per minute per IP on the public server (120 locally) → `429` with `Retry-After`. **Errors**: always `{"error": {"code", "message", "details"?}}`. Error messages are in Italian; the `code` values are stable identifiers in English.
+
+## Service and schema
+
+| Method | Path | What it does | Ch. |
+|---|---|---|---|
+| GET | `/` | index with the main links | 1 |
+| GET | `/health` | service status | 1 |
+| GET, POST, PUT | `/echo` | sends back the method, query, headers and body it received | 2 |
+| GET | `/schema` | tables, columns, primary and foreign keys, counts | 5, 12 |
+
+## Sandbox and authentication
+
+| Method | Path | What it does | Ch. |
+|---|---|---|---|
+| POST | `/sandbox` | creates a private copy of the database → `{token, expires_at}` (201) | 6 |
+| GET | `/sandbox` ✍️ | information about the token's sandbox | 6 |
+| POST | `/sandbox/reset` ✍️ | brings the sandbox back to the initial data | 6 |
+| DELETE | `/sandbox` ✍️ | deletes the sandbox (204) | 6 |
+| GET | `/sandbox/me` | 200 with a valid token, 401 without | 8 |
+
+## Books
+
+| Method | Path | What it does | Ch. |
+|---|---|---|---|
+| GET | `/books` | list with filters (`q`, `author_id`, `category`, `tag`, `min_price`, `max_price`, `year_from`, `year_to`, `language`, `in_stock`, `format`), `sort` (`id`, `title`, `price`, `year`, `pages`, `created_at`, `rating`; `-` = desc), `page`/`limit` (max 100), `expand=author,category,tags` | 3, 4 |
+| GET | `/books/{id}` | detail with `ETag`; `expand=author,category,tags,reviews` | 3, 5, 14 |
+| POST | `/books` ✍️ | creates (201 + `Location`) | 6 |
+| PUT | `/books/{id}` ✍️ | replaces in full | 6 |
+| PATCH | `/books/{id}` ✍️ | changes the fields sent | 6 |
+| DELETE | `/books/{id}` ✍️ | deletes (204); `409 book_in_orders` if it appears in orders | 6, 13 |
+| GET | `/books/{id}/reviews` | reviews with the customer's name and city (JOIN); `min_rating` | 5 |
+| POST | `/books/{id}/reviews` ✍️ | adds a review | 6 |
+| DELETE | `/reviews/{id}` ✍️ | deletes a review | 6 |
+| GET | `/export/books.csv`, `/export/books.ndjson` | streaming export | JSON 11 |
+
+## Authors, categories, customers, orders
+
+| Method | Path | What it does | Ch. |
+|---|---|---|---|
+| GET | `/authors` | list with `books_count`; `country` filter | 5 |
+| GET | `/authors/{id}` | one author | 5 |
+| GET | `/authors/{id}/books` | their books (nested resource) | 5 |
+| GET | `/categories` | flat; `?tree=true` as a tree (`children`) | 5 |
+| GET | `/categories/{slug}/books` | books of the category and its subcategories (`deep=false` for the category only) | 5 |
+| GET | `/customers` | list; `city` filter | 5 |
+| GET | `/customers/{id}` | customer with `orders_summary` | 5 |
+| POST | `/customers` ✍️ | creates; `409 duplicate_email` | 13 |
+| GET | `/customers/{id}/orders` | the customer's orders | 5 |
+| GET | `/orders` | list; `status`, `customer_id`, `from`, `to`, `sort` | 4 |
+| GET | `/orders/{id}` | one order; `expand=items,items.book,customer` (default `items`) | 5 |
+| POST | `/orders` ✍️ | creates order + lines in a transaction; `422 unknown_book`, `409 out_of_stock` | 13 |
+| PATCH | `/orders/{id}` ✍️ | changes the status; `409 invalid_transition` with `allowed` | 13 |
+| DELETE | `/orders/{id}` ✍️ | deletes the order and its lines (cascade) | 13 |
+
+## Search, statistics, queries
+
+| Method | Path | What it does | Ch. |
+|---|---|---|---|
+| GET | `/search?q=` | FTS5 full-text with ranking (`score`) and `snippet`; `limit` ≤ 50 | 9 |
+| GET | `/stats` | totals, prices, books per category, top authors, orders by status | 10 |
+| GET | `/stats/sales` | `group_by` = `month`, `category`, `author`, `city`, `from`, `to` | 10 |
+| POST | `/query` | structured JSON filter → parameterized SQL; response with `meta.sql` | 11 |
+| POST | `/sql` | read-only `SELECT` (authorizer), max 200 rows, 2 s; `params`, `explain` | 12 |
+
+## Headers you will find in the responses
+
+| Header | Where | Meaning |
+|---|---|---|
+| `X-Request-Id` | all | request identifier, to quote in logs |
+| `ETag`, `Cache-Control` | `GET /books/{id}` (and `Cache-Control: no-store` with a token) | conditional caching (ch. 14) |
+| `Location` | 201 of `POST /books`, `POST /orders` | URL of the created resource |
+| `Retry-After` | 429 | seconds to wait |
+| `Access-Control-*` | all | open CORS (ch. 15) |
+| `Content-Encoding` | compressed responses | `gzip` from the API, or `zstd` from Caddy in production (ch. 14) |
+| `Strict-Transport-Security`, `X-Frame-Options`, … | production only | added by the reverse proxy (Caddy) |

@@ -241,7 +241,9 @@ def main():
     ap.add_argument("--stampa", action="store_true")
     a = ap.parse_args()
     manifest = json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {"voce": "it_IT-paola-medium", "pagine": {}}
-    files = sorted(p for p in DOCS.rglob("*.md*") if p.name != "index.mdx")
+    # solo le pagine italiane: la lettura usa voci italiane, la versione inglese (docs/en/) non ha audio
+    files = sorted(p for p in DOCS.rglob("*.md*")
+                   if p.name != "index.mdx" and p.relative_to(DOCS).parts[0] != "en")
     if a.pagina:
         files = [p for p in files if slug(p) == a.pagina]
     tot = 0
