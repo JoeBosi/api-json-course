@@ -76,3 +76,4 @@ alternative, `llms.txt` con sezione inglese, `llms-full-en.txt`. Controllo link:
 120), esempio del 429 rifatto davvero con il limite reale, link morto a ReDoc, due frasi "è stato
 eseguito". Link a GitHub nel piè di pagina pronto ma spento (`GITHUB_PUBBLICO=false`) finché il
 repo è privato.
+- 30/10/2026: cambio lingua con bandierina SVG (regola di Giuseppe per i siti bilingui), tolto il menu lingua di Starlight.
