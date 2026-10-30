@@ -71,7 +71,7 @@ export default defineConfig({
 					{ label: 'Swagger UI (/api/docs)', translations: { en: 'Swagger UI (/api/docs)' }, link: 'https://corso-api-json.giuseppebosi.com/api/docs', attrs: { target: '_blank' } },
 				] },
 			],
-			components: { PageTitle: './src/components/PageTitle.astro', Footer: './src/components/Footer.astro', SiteTitle: './src/components/SiteTitle.astro' },
+			components: { PageTitle: './src/components/PageTitle.astro', Footer: './src/components/Footer.astro', SiteTitle: './src/components/SiteTitle.astro', LanguageSelect: './src/components/LanguageSelect.astro' },
 		}),
 	],
 });
